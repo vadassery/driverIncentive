@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { supabase } from '../supabase';
 
 const Login = ({ onLogin }) => {
-  const [email, setEmail] = useState('');
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -13,50 +13,21 @@ const Login = ({ onLogin }) => {
     setLoading(true);
     setError(null);
 
-    const { error, user } = await supabase.auth.signIn({
-      email,
-      password,
-    });
+    const { data, error } = await supabase
+      .from('users')
+      .select('*')
+      .eq('username', username)
+      .eq('password', password);
 
-    if (error) {
-      setError(error.message);
-    } else {
-      onLogin(user);
+    if (error || data.length === 0) {
+      setError('Invalid username or password');
+      setLoading(false);
+      return;
     }
 
-    setLoading(false);
-  };
-
-  const handleSignUp = async (e) => {
-    e.preventDefault();
-    setLoading(true);
-    setError(null);
-
-    const { error } = await supabase.auth.signUp({
-      email,
-      password,
-    });
-
-    if (error) {
-      setError(error.message);
-    } else {
-      // Add the user to the users table
-      const { error: userError } = await supabase.from('users').insert([{ email }]);
-      if (userError) {
-        setError(userError.message);
-      } else {
-        // Automatically log in the user after signup
-        const { error: loginError, user } = await supabase.auth.signIn({
-          email,
-          password,
-        });
-        if (loginError) {
-          setError(loginError.message);
-        } else {
-          onLogin(user);
-        }
-      }
-    }
+    const user = data[0];
+    localStorage.setItem('user', JSON.stringify(user));
+    onLogin(user);
 
     setLoading(false);
   };
@@ -67,12 +38,12 @@ const Login = ({ onLogin }) => {
         <h2 className="text-2xl font-bold mb-4">Login</h2>
         {error && <p className="text-red-500 mb-4">{error}</p>}
         <div className="mb-4">
-          <label className="block text-sm font-medium text-gray-700">Email</label>
+          <label className="block text-sm font-medium text-gray-700">Username</label>
           <input
-            type="email"
+            type="text"
             className="mt-1 block w-full p-2 border rounded"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
             required
           />
         </div>
