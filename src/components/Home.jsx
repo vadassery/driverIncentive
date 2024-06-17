@@ -3,7 +3,16 @@ import { supabase } from "../supabase";
 import { motion, AnimatePresence } from "framer-motion";
 import { ToastContainer, toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
-import { FaPlus, FaSearch, FaSignOutAlt, FaTrashAlt, FaClipboardCheck, FaTimes, FaCheck, FaBan } from "react-icons/fa";
+import {
+  FaPlus,
+  FaSearch,
+  FaSignOutAlt,
+  FaTrashAlt,
+  FaClipboardCheck,
+  FaTimes,
+  FaCheck,
+  FaBan,
+} from "react-icons/fa";
 
 const Home = ({ user }) => {
   const [drivers, setDrivers] = useState([]);
@@ -89,6 +98,7 @@ const Home = ({ user }) => {
     const { data, error } = await supabase
       .from("drivers")
       .select("*")
+      .eq("client_id", user.client_id)
       .order("driver_id", { ascending: true });
 
     if (error) {
@@ -114,6 +124,7 @@ const Home = ({ user }) => {
       .from("drivers")
       .select("name")
       .eq("driver_id", driverId)
+      .eq("client_id", user.client_id)
       .single();
 
     if (error) {
@@ -129,6 +140,7 @@ const Home = ({ user }) => {
       .from("drivers")
       .select("*")
       .eq("driver_id", newDelivery.id)
+      .eq("client_id", user.client_id)
       .single();
 
     if (error || !driver) {
@@ -142,7 +154,8 @@ const Home = ({ user }) => {
     const { error: updateError } = await supabase
       .from("drivers")
       .update({ total_collected: updatedTotal })
-      .eq("driver_id", newDelivery.id);
+      .eq("driver_id", newDelivery.id)
+      .eq("client_id", user.client_id);
 
     if (updateError) {
       console.error("Error updating delivery:", updateError);
@@ -172,7 +185,8 @@ const Home = ({ user }) => {
     const { error } = await supabase
       .from("drivers")
       .update({ points: updatedPoints, total_collected: updatedTotal })
-      .eq("driver_id", selectedDriverId);
+      .eq("driver_id", selectedDriverId)
+      .eq("client_id", user.client_id);
 
     if (error) {
       console.error("Error claiming points:", error);
@@ -193,7 +207,8 @@ const Home = ({ user }) => {
     const { error } = await supabase
       .from("drivers")
       .delete()
-      .eq("driver_id", selectedDriverId);
+      .eq("driver_id", selectedDriverId)
+      .eq("client_id", user.client_id);
 
     if (error) {
       console.error("Error deleting driver:", error);
@@ -218,11 +233,12 @@ const Home = ({ user }) => {
     const { data: lastDriver, error: fetchError } = await supabase
       .from("drivers")
       .select("driver_id")
+      .eq("client_id", user.client_id)
       .order("driver_id", { ascending: false })
       .limit(1)
       .single();
 
-    if (fetchError) {
+    if (fetchError && fetchError.code !== "PGRST116") {
       console.error("Error fetching last driver ID:", fetchError);
       triggerAlert("error", "Error fetching last driver ID");
       return;
@@ -233,6 +249,7 @@ const Home = ({ user }) => {
     const { error: insertError } = await supabase.from("drivers").insert({
       driver_id: newDriverId,
       name: newDriverName,
+      client_id: user.client_id,
     });
 
     if (insertError) {
@@ -262,16 +279,19 @@ const Home = ({ user }) => {
   };
 
   return (
-    <div className="mx-auto p-4 bg-gray-100 dark:bg-gray-800 min-h-screen">
+    <div className="mx-auto p-4 bg-gray-100 min-h-screen">
       <ToastContainer />
-      <div className="flex justify-between items-center mb-4">
-        <h1 className="text-3xl font-bold text-gray-800 dark:text-gray-200">
-          Drivers Incentive Program
-        </h1>
-        <div className="flex items-center">
-          <p className="text-gray-600 dark:text-gray-400 mr-4">
-            Welcome, {user.username}
+      <header className="flex justify-between items-center mb-6">
+        <div className="flex flex-col items-center">
+          <h1 className="text-3xl text-center font-bold text-gray-800">
+            Drivers Incentive Program
+          </h1>
+          <p className="text-center text-gray-600 mt-2">
+            powered by <span className="font-medium">whitesoft</span>{" "}
           </p>
+        </div>
+
+        <div className="flex items-center">
           <button
             onClick={handleLogout}
             className="bg-red-500 text-white py-2 px-4 rounded flex items-center"
@@ -280,17 +300,17 @@ const Home = ({ user }) => {
             Logout
           </button>
         </div>
-      </div>
+      </header>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="bg-white dark:bg-gray-700 col-span-1 rounded-lg shadow-md p-6">
-          <h2 className="text-xl font-bold mb-4 text-gray-800 dark:text-gray-200">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="bg-white col-span-1 rounded-lg shadow-md p-6">
+          <h2 className="text-xl font-bold mb-4 text-gray-800">
             Add Delivered Details
           </h2>
           <div className="mb-4">
             <label
               htmlFor="driverId"
-              className="block text-gray-700 dark:text-gray-300 font-bold mb-2"
+              className="block text-gray-700 font-bold mb-2"
             >
               Driver ID
             </label>
@@ -300,13 +320,13 @@ const Home = ({ user }) => {
               placeholder="Enter Driver ID"
               value={newDelivery.id}
               onChange={handleInputChange}
-              className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline dark:bg-gray-600 dark:text-gray-300"
+              className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
             />
           </div>
           <div className="mb-4">
             <label
               htmlFor="driverName"
-              className="block text-gray-700 dark:text-gray-300 font-bold mb-2"
+              className="block text-gray-700 font-bold mb-2"
             >
               Driver Name
             </label>
@@ -316,14 +336,14 @@ const Home = ({ user }) => {
               placeholder="Driver Name"
               value={newDelivery.name}
               onChange={handleInputChange}
-              className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline dark:bg-gray-600 dark:text-gray-300"
+              className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
               disabled
             />
           </div>
           <div className="mb-4">
             <label
               htmlFor="deliveredAmount"
-              className="block text-gray-700 dark:text-gray-300 font-bold mb-2"
+              className="block text-gray-700 font-bold mb-2"
             >
               Amount Delivered
             </label>
@@ -333,7 +353,7 @@ const Home = ({ user }) => {
               placeholder="Enter Amount Delivered"
               value={newDelivery.total_collected}
               onChange={handleInputChange}
-              className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline dark:bg-gray-600 dark:text-gray-300"
+              className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
             />
           </div>
           <button
@@ -344,21 +364,19 @@ const Home = ({ user }) => {
           </button>
         </div>
 
-        <div className="bg-white col-span-2 dark:bg-gray-700 rounded-lg shadow-md p-6">
-          <h2 className="text-xl font-bold mb-4 text-gray-800 dark:text-gray-200">
-            Drivers List
-          </h2>
+        <div className="bg-white col-span-3 rounded-lg shadow-md px-6 py-3">
+          <h2 className="text-xl font-bold mb-4 text-gray-800">Drivers List</h2>
           <div className="flex mb-4">
             <div className="relative w-full mr-2">
               <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
-                <FaSearch className="text-gray-500 dark:text-gray-400" />
+                <FaSearch className="text-gray-500" />
               </div>
               <input
                 type="text"
                 placeholder="Search"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="shadow appearance-none border rounded w-full py-2 pl-10 pr-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline dark:bg-gray-600 dark:text-gray-300"
+                className="shadow appearance-none border rounded w-full py-2 pl-10 pr-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
               />
             </div>
             <button
@@ -370,78 +388,82 @@ const Home = ({ user }) => {
             </button>
           </div>
           {loading ? (
-            <p className="text-gray-600 dark:text-gray-400">Loading drivers...</p>
+            <p className="text-gray-600">Loading drivers...</p>
           ) : (
-            <div className="overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700">
-              <table className="min-w-full divide-y-2 divide-gray-200 dark:divide-gray-700 bg-white dark:bg-gray-800 text-sm">
-                <thead className="ltr:text-left rtl:text-right">
-                  <tr>
-                    <th className="whitespace-nowrap px-4 py-2 font-medium text-gray-900 dark:text-gray-200">
-                      ID
-                    </th>
-                    <th className="whitespace-nowrap px-4 py-2 font-medium text-gray-900 dark:text-gray-200">
-                      Name
-                    </th>
-                    <th className="whitespace-nowrap px-4 py-2 font-medium text-gray-900 dark:text-gray-200">
-                      Total Amount Delivered
-                    </th>
-                    <th className="whitespace-nowrap px-4 py-2 font-medium text-gray-900 dark:text-gray-200">
-                      Points
-                    </th>
-                    <th className="whitespace-nowrap px-4 py-2 font-medium text-gray-900 dark:text-gray-200">
-                      Date
-                    </th>
-                    <th className="whitespace-nowrap px-4 py-2 font-medium text-gray-900 dark:text-gray-200">
-                      Action
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-                  {filteredDrivers.map((driver) => (
-                    <tr
-                      key={driver.driver_id}
-                      className="hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors duration-300"
-                    >
-                      <td className="whitespace-nowrap px-4 py-2 font-medium text-gray-900 dark:text-gray-300">
-                        {driver.driver_id}
-                      </td>
-                      <td className="whitespace-nowrap px-4 py-2 text-gray-700 dark:text-gray-400">
-                        {driver.name}
-                      </td>
-                      <td className="whitespace-nowrap px-4 py-2 text-gray-700 dark:text-gray-400">
-                        {driver.total_collected}
-                      </td>
-                      <td className="whitespace-nowrap px-4 py-2 text-gray-700 dark:text-gray-400">
-                        {driver.points}
-                      </td>
-                      <td className="whitespace-nowrap px-4 py-2 text-gray-700 dark:text-gray-400">
-                        {new Date(driver.created_at).toLocaleDateString()}
-                      </td>
-                      <td className="whitespace-nowrap px-4 py-2">
-                        <button
-                          className={`bg-yellow-500 hover:bg-yellow-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline transition-colors duration-300 ${
-                            driver.total_collected < 100000
-                              ? "opacity-50 cursor-not-allowed"
-                              : ""
-                          }`}
-                          onClick={() => handleClaim(driver.driver_id)}
-                          disabled={driver.total_collected < 100000}
-                        >
-                          <FaClipboardCheck className="mr-2" />
-                          Claim
-                        </button>
-                        <button
-                          className="bg-red-500 hover:bg-red-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline transition-colors duration-300 ml-2"
-                          onClick={() => handleDeleteConfirm(driver.driver_id)}
-                        >
-                          <FaTrashAlt className="mr-2" />
-                          Delete
-                        </button>
-                      </td>
+            <div className="overflow-y-auto h-[400px]">
+              <div className="overflow-x-auto rounded-lg border border-gray-200">
+                <table className="min-w-full divide-y-2 divide-gray-200 bg-white text-sm">
+                  <thead className="text-left">
+                    <tr>
+                      <th className="whitespace-nowrap text-center px-4 py-2 font-medium text-gray-900">
+                        ID
+                      </th>
+                      <th className="whitespace-nowrap text-center px-4 py-2 font-medium text-gray-900">
+                        Name
+                      </th>
+                      <th className="whitespace-nowrap text-center px-4 py-2 font-medium text-gray-900">
+                        Total Amount Delivered
+                      </th>
+                      <th className="whitespace-nowrap text-center px-4 py-2 font-medium text-gray-900">
+                        Points
+                      </th>
+                      <th className="whitespace-nowrap text-center px-4 py-2 font-medium text-gray-900">
+                        Date
+                      </th>
+                      <th className="whitespace-nowrap text-center px-4 py-2 font-medium text-gray-900">
+                        Action
+                      </th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200">
+                    {filteredDrivers.map((driver) => (
+                      <tr
+                        key={driver.driver_id}
+                        className="hover:bg-gray-100 text-center transition-colors duration-300"
+                      >
+                        <td className="whitespace-nowrap text-center px-4 py-2 font-medium text-gray-900">
+                          {driver.driver_id}
+                        </td>
+                        <td className="whitespace-nowrap text-center px-4 py-2 text-gray-700">
+                          {driver.name}
+                        </td>
+                        <td className="whitespace-nowrap text-center px-4 py-2 text-gray-700">
+                          {driver.total_collected}
+                        </td>
+                        <td className="whitespace-nowrap text-center px-4 py-2 text-gray-700">
+                          {driver.points}
+                        </td>
+                        <td className="whitespace-nowrap text-center px-4 py-2 text-gray-700">
+                          {new Date(driver.created_at).toLocaleDateString()}
+                        </td>
+                        <td className="whitespace-nowrap text-center px-4 py-2">
+                          <button
+                            className={`bg-yellow-500 hover:bg-yellow-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline transition-colors duration-300 ${
+                              driver.total_collected < 100000
+                                ? "opacity-50 cursor-not-allowed"
+                                : ""
+                            }`}
+                            onClick={() => handleClaim(driver.driver_id)}
+                            disabled={driver.total_collected < 100000}
+                          >
+                            <FaClipboardCheck className="mr-2" />
+                            Claim
+                          </button>
+                          <button
+                            className="bg-red-500 hover:bg-red-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline transition-colors duration-300 ml-2"
+                            onClick={() =>
+                              handleDeleteConfirm(driver.driver_id)
+                            }
+                          >
+                            <FaTrashAlt className="mr-2" />
+                            Delete
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
         </div>
@@ -449,11 +471,11 @@ const Home = ({ user }) => {
 
       {showConfirmClaimModal && (
         <div className="fixed inset-0 flex items-center justify-center bg-gray-600 bg-opacity-50">
-          <div className="bg-white dark:bg-gray-700 p-6 rounded shadow-md">
-            <h2 className="text-2xl font-bold mb-4 text-gray-800 dark:text-gray-200">
+          <div className="bg-white p-6 rounded shadow-md">
+            <h2 className="text-2xl font-bold mb-4 text-gray-800">
               Confirm Claim
             </h2>
-            <p className="text-gray-700 dark:text-gray-400 mb-4">
+            <p className="text-gray-700 mb-4">
               Are you sure you want to claim points for this driver?
             </p>
             <div className="flex justify-end">
@@ -476,11 +498,11 @@ const Home = ({ user }) => {
 
       {showConfirmDeleteModal && (
         <div className="fixed inset-0 flex items-center justify-center bg-gray-600 bg-opacity-50">
-          <div className="bg-white dark:bg-gray-700 p-6 rounded shadow-md">
-            <h2 className="text-2xl font-bold mb-4 text-gray-800 dark:text-gray-200">
+          <div className="bg-white p-6 rounded shadow-md">
+            <h2 className="text-2xl font-bold mb-4 text-gray-800">
               Confirm Delete
             </h2>
-            <p className="text-gray-700 dark:text-gray-400 mb-4">
+            <p className="text-gray-700 mb-4">
               Are you sure you want to delete this driver?
             </p>
             <div className="flex justify-end">
@@ -503,8 +525,8 @@ const Home = ({ user }) => {
 
       {showAddDriverModal && (
         <div className="fixed inset-0 flex items-center justify-center bg-gray-600 bg-opacity-50">
-          <div className="bg-white dark:bg-gray-700 p-6 rounded shadow-md">
-            <h2 className="text-2xl font-bold mb-4 text-gray-800 dark:text-gray-200">
+          <div className="bg-white p-6 rounded shadow-md">
+            <h2 className="text-2xl font-bold mb-4 text-gray-800">
               Add Driver
             </h2>
             <input
@@ -512,7 +534,7 @@ const Home = ({ user }) => {
               placeholder="Driver Name"
               value={newDriverName}
               onChange={(e) => setNewDriverName(e.target.value)}
-              className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline dark:bg-gray-600 dark:text-gray-300 mb-4"
+              className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline mb-4"
             />
             <div className="flex justify-end">
               <button
@@ -532,21 +554,19 @@ const Home = ({ user }) => {
         </div>
       )}
 
-<AnimatePresence>
-  {showAlert && alertConfig && (
-    <motion.div
-      initial={{ y: 50, opacity: 0 }}
-      animate={{ y: 0, opacity: 1 }}
-      exit={{ y: 50, opacity: 0 }}
-      className={`fixed bottom-4 left-1/2 transform -translate-x-1/2 flex items-center px-4 py-3 rounded-lg shadow-md ${alertConfig.color} text-white`}
-    >
-      {alertConfig.icon}
-      <span className="ml-2">{alertConfig.message}</span>
-    </motion.div>
-  )}
-</AnimatePresence>
-
-
+      <AnimatePresence>
+        {showAlert && alertConfig && (
+          <motion.div
+            initial={{ y: 50, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: 50, opacity: 0 }}
+            className={`fixed bottom-4 left-1/2 transform -translate-x-1/2 flex items-center px-4 py-3 rounded-lg shadow-md ${alertConfig.color} text-white`}
+          >
+            {alertConfig.icon}
+            <span className="ml-2">{alertConfig.message}</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };
