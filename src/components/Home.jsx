@@ -34,11 +34,11 @@ const Home = ({ user }) => {
   const alertConfigs = {
     delete: {
       color: "bg-red-500",
-      icon: <FaTimes className="text-white" />,
+      icon: <FaTrashAlt className="text-white" />,
       message: "Driver deleted successfully!",
     },
     submit: {
-      color: "bg-green-500",
+      color: "bg-blue-500",
       icon: <FaCheck className="text-white" />,
       message: "Delivery details added successfully!",
     },
@@ -320,7 +320,7 @@ const Home = ({ user }) => {
               placeholder="Enter Driver ID"
               value={newDelivery.id}
               onChange={handleInputChange}
-              className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
+              className=" appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
             />
           </div>
           <div className="mb-4">
@@ -336,7 +336,7 @@ const Home = ({ user }) => {
               placeholder="Driver Name"
               value={newDelivery.name}
               onChange={handleInputChange}
-              className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
+              className=" appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
               disabled
             />
           </div>
@@ -353,12 +353,12 @@ const Home = ({ user }) => {
               placeholder="Enter Amount Delivered"
               value={newDelivery.total_collected}
               onChange={handleInputChange}
-              className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
+              className=" appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
             />
           </div>
           <button
             onClick={handleAddDelivery}
-            className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline transition-colors duration-300"
+            className="bg-blue-500 hover:bg-blue-700 mx-14px   text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline transition-colors duration-300"
           >
             Submit
           </button>
@@ -376,7 +376,7 @@ const Home = ({ user }) => {
                 placeholder="Search"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="shadow appearance-none border rounded w-full py-2 pl-10 pr-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
+                className=" appearance-none border rounded w-full py-2 pl-10 pr-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
               />
             </div>
             <button
@@ -390,81 +390,80 @@ const Home = ({ user }) => {
           {loading ? (
             <p className="text-gray-600">Loading drivers...</p>
           ) : (
-            <div className="overflow-y-auto h-[400px]">
-              <div className="overflow-x-auto rounded-lg border border-gray-200">
-                <table className="min-w-full divide-y-2 divide-gray-200 bg-white text-sm">
-                  <thead className="text-left">
-                    <tr>
-                      <th className="whitespace-nowrap text-center px-4 py-2 font-medium text-gray-900">
-                        ID
-                      </th>
-                      <th className="whitespace-nowrap text-center px-4 py-2 font-medium text-gray-900">
-                        Name
-                      </th>
-                      <th className="whitespace-nowrap text-center px-4 py-2 font-medium text-gray-900">
-                        Total Amount Delivered
-                      </th>
-                      <th className="whitespace-nowrap text-center px-4 py-2 font-medium text-gray-900">
-                        Points
-                      </th>
-                      <th className="whitespace-nowrap text-center px-4 py-2 font-medium text-gray-900">
-                        Date
-                      </th>
-                      <th className="whitespace-nowrap text-center px-4 py-2 font-medium text-gray-900">
-                        Action
-                      </th>
+            <div className="overflow-y-auto h-[400px] 2xl:h-[700px]">
+            <div className="overflow-x-auto rounded-lg border border-gray-200">
+              <table className="min-w-full divide-y-2 divide-gray-200 bg-white text-sm">
+                <thead className="bg-gray-200 ">
+                  <tr>
+                    <th className="whitespace-nowrap text-center px-4 py-2 font-medium text-gray-900 ">
+                      ID
+                    </th>
+                    <th className="whitespace-nowrap text-center px-4 py-2 font-medium text-gray-900 ">
+                      Name
+                    </th>
+                    <th className="whitespace-nowrap text-center px-4 py-2 font-medium text-gray-900 ">
+                      Total Amount Delivered
+                    </th>
+                    <th className="whitespace-nowrap text-center px-4 py-2 font-medium text-gray-900 ">
+                      Points
+                    </th>
+                    <th className="whitespace-nowrap text-center px-4 py-2 font-medium text-gray-900 ">
+                      Date
+                    </th>
+                    <th className="whitespace-nowrap text-center px-4 py-2 font-medium text-gray-900 ">
+                      Action
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200">
+                  {filteredDrivers.map((driver) => (
+                    <tr
+                      key={driver.driver_id}
+                      className="hover:bg-gray-100 text-center transition-colors duration-300"
+                    >
+                      <td className="whitespace-nowrap text-center px-4 py-2 font-medium text-gray-900 ">
+                        {driver.driver_id}
+                      </td>
+                      <td className="whitespace-nowrap text-center px-4 py-2 text-gray-700 ">
+                        {driver.name}
+                      </td>
+                      <td className="whitespace-nowrap text-center px-4 py-2 text-gray-700 ">
+                        {driver.total_collected}
+                      </td>
+                      <td className="whitespace-nowrap text-center px-4 py-2 text-gray-700 ">
+                        {driver.points}
+                      </td>
+                      <td className="whitespace-nowrap text-center px-4 py-2 text-gray-700 ">
+                        {new Date(driver.created_at).toLocaleDateString()}
+                      </td>
+                      <td className="whitespace-nowrap text-center px-4 py-2 ">
+                        <button
+                          className={`bg-yellow-500 hover:bg-yellow-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline transition-colors duration-300 ${
+                            driver.total_collected < 100000
+                              ? "opacity-50 cursor-not-allowed"
+                              : ""
+                          }`}
+                          onClick={() => handleClaim(driver.driver_id)}
+                          disabled={driver.total_collected < 100000}
+                        >
+                          <FaClipboardCheck className="mr-2" />
+                          Claim
+                        </button>
+                        <button
+                          className="bg-red-500 hover:bg-red-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline transition-colors duration-300 ml-2"
+                          onClick={() => handleDeleteConfirm(driver.driver_id)}
+                        >
+                          <FaTrashAlt className="mr-2" />
+                          Delete
+                        </button>
+                      </td>
                     </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-200">
-                    {filteredDrivers.map((driver) => (
-                      <tr
-                        key={driver.driver_id}
-                        className="hover:bg-gray-100 text-center transition-colors duration-300"
-                      >
-                        <td className="whitespace-nowrap text-center px-4 py-2 font-medium text-gray-900">
-                          {driver.driver_id}
-                        </td>
-                        <td className="whitespace-nowrap text-center px-4 py-2 text-gray-700">
-                          {driver.name}
-                        </td>
-                        <td className="whitespace-nowrap text-center px-4 py-2 text-gray-700">
-                          {driver.total_collected}
-                        </td>
-                        <td className="whitespace-nowrap text-center px-4 py-2 text-gray-700">
-                          {driver.points}
-                        </td>
-                        <td className="whitespace-nowrap text-center px-4 py-2 text-gray-700">
-                          {new Date(driver.created_at).toLocaleDateString()}
-                        </td>
-                        <td className="whitespace-nowrap text-center px-4 py-2">
-                          <button
-                            className={`bg-yellow-500 hover:bg-yellow-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline transition-colors duration-300 ${
-                              driver.total_collected < 100000
-                                ? "opacity-50 cursor-not-allowed"
-                                : ""
-                            }`}
-                            onClick={() => handleClaim(driver.driver_id)}
-                            disabled={driver.total_collected < 100000}
-                          >
-                            <FaClipboardCheck className="mr-2" />
-                            Claim
-                          </button>
-                          <button
-                            className="bg-red-500 hover:bg-red-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline transition-colors duration-300 ml-2"
-                            onClick={() =>
-                              handleDeleteConfirm(driver.driver_id)
-                            }
-                          >
-                            <FaTrashAlt className="mr-2" />
-                            Delete
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                  ))}
+                </tbody>
+              </table>
             </div>
+          </div>
+          
           )}
         </div>
       </div>
@@ -534,7 +533,7 @@ const Home = ({ user }) => {
               placeholder="Driver Name"
               value={newDriverName}
               onChange={(e) => setNewDriverName(e.target.value)}
-              className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline mb-4"
+              className=" appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline mb-4"
             />
             <div className="flex justify-end">
               <button
@@ -554,19 +553,20 @@ const Home = ({ user }) => {
         </div>
       )}
 
-      <AnimatePresence>
-        {showAlert && alertConfig && (
-          <motion.div
-            initial={{ y: 50, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            exit={{ y: 50, opacity: 0 }}
-            className={`fixed bottom-4 left-1/2 transform -translate-x-1/2 flex items-center px-4 py-3 rounded-lg shadow-md ${alertConfig.color} text-white`}
-          >
-            {alertConfig.icon}
-            <span className="ml-2">{alertConfig.message}</span>
-          </motion.div>
-        )}
-      </AnimatePresence>
+<AnimatePresence>
+  {showAlert && alertConfig && (
+    <motion.div
+      initial={{ x: 300, opacity: 0 }}
+      animate={{ x: 0, opacity: 1 }}
+      exit={{ x: 300, opacity: 0 }}
+      className={`fixed top-20 right-4 flex items-center px-4 py-3 rounded-lg shadow-md ${alertConfig.color} text-white`}
+    >
+      {alertConfig.icon}
+      <span className="ml-2">{alertConfig.message}</span>
+    </motion.div>
+  )}
+</AnimatePresence>
+
     </div>
   );
 };
