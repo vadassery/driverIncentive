@@ -1,0 +1,29 @@
+create table
+  public.drivers (
+    id serial,
+    driver_id integer not null,
+    name text not null,
+    total_collected integer null,
+    points integer null default 0,
+    created_at timestamp with time zone null default now(),
+    client_id integer null,
+    constraint drivers_pkey primary key (id),
+    constraint drivers_driver_id_client_id_key unique (driver_id, client_id)
+  ) tablespace pg_default;
+
+create trigger set_driver_id before insert on drivers for each row
+execute function next_driver_id ();
+
+,
+
+
+create table
+  public.users (
+    id serial,
+    username text not null,
+    password text not null,
+    client_name text null,
+    client_id integer null,
+    constraint users_pkey primary key (id),
+    constraint users_username_key unique (username)
+  ) tablespace pg_default;
