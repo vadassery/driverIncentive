@@ -12,7 +12,10 @@ import {
   FaTimes,
   FaCheck,
   FaBan,
+  FaEye,
 } from "react-icons/fa";
+import DatePicker from "react-datepicker";
+import "react-datepicker/dist/react-datepicker.css";
 
 const Home = ({ user }) => {
   const [drivers, setDrivers] = useState([]);
@@ -30,6 +33,9 @@ const Home = ({ user }) => {
   const [newDriverName, setNewDriverName] = useState("");
   const [showAlert, setShowAlert] = useState(false);
   const [alertConfig, setAlertConfig] = useState(null);
+  const [showDriverDetailsModal, setShowDriverDetailsModal] = useState(false);
+  const [driverDetails, setDriverDetails] = useState([]);
+  const [filterMonth, setFilterMonth] = useState(new Date());
 
   const alertConfigs = {
     delete: {
@@ -61,37 +67,56 @@ const Home = ({ user }) => {
 
   useEffect(() => {
     fetchDrivers();
-    const subscription = supabase
+
+    const driversSubscription = supabase
       .channel("public:drivers")
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "drivers" },
         (payload) => {
-          if (payload.eventType === "INSERT") {
-            setDrivers((prevDrivers) => [...prevDrivers, payload.new]);
-          } else if (payload.eventType === "UPDATE") {
-            setDrivers((prevDrivers) =>
-              prevDrivers.map((driver) =>
-                driver.driver_id === payload.new.driver_id
-                  ? payload.new
-                  : driver
-              )
-            );
-          } else if (payload.eventType === "DELETE") {
-            setDrivers((prevDrivers) =>
-              prevDrivers.filter(
-                (driver) => driver.driver_id !== payload.old.driver_id
-              )
-            );
-          }
+          handleRealTimeDrivers(payload);
+        }
+      )
+      .subscribe();
+
+    const deliveriesSubscription = supabase
+      .channel("public:deliveries")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "deliveries" },
+        (payload) => {
+          handleRealTimeDeliveries(payload);
         }
       )
       .subscribe();
 
     return () => {
-      supabase.removeChannel(subscription);
+      supabase.removeChannel(driversSubscription);
+      supabase.removeChannel(deliveriesSubscription);
     };
   }, []);
+
+  const handleRealTimeDrivers = (payload) => {
+    if (payload.eventType === "INSERT") {
+      setDrivers((prevDrivers) => [...prevDrivers, payload.new]);
+    } else if (payload.eventType === "UPDATE") {
+      setDrivers((prevDrivers) =>
+        prevDrivers.map((driver) =>
+          driver.driver_id === payload.new.driver_id ? payload.new : driver
+        )
+      );
+    } else if (payload.eventType === "DELETE") {
+      setDrivers((prevDrivers) =>
+        prevDrivers.filter((driver) => driver.driver_id !== payload.old.driver_id)
+      );
+    }
+  };
+
+  const handleRealTimeDeliveries = (payload) => {
+    if (payload.eventType === "INSERT" || payload.eventType === "UPDATE") {
+      fetchDriverDetails(payload.new.driver_id);
+    }
+  };
 
   const fetchDrivers = async () => {
     setLoading(true);
@@ -150,7 +175,7 @@ const Home = ({ user }) => {
     }
 
     const updatedTotal =
-      driver.total_collected + parseInt(newDelivery.total_collected, 10);
+      driver.total_collected + parseFloat(newDelivery.total_collected);
     const { error: updateError } = await supabase
       .from("drivers")
       .update({ total_collected: updatedTotal })
@@ -161,7 +186,20 @@ const Home = ({ user }) => {
       console.error("Error updating delivery:", updateError);
       triggerAlert("error", "Error updating delivery");
     } else {
-      triggerAlert("submit");
+      const { error: insertError } = await supabase.from("deliveries").insert({
+        driver_id: newDelivery.id,
+        client_id: user.client_id,
+        date: new Date().toISOString(),
+        amount: parseFloat(newDelivery.total_collected),
+        claimed: updatedTotal >= 100000,  // Mark as claimed if threshold is reached
+      });
+
+      if (insertError) {
+        console.error("Error adding delivery record:", insertError);
+        triggerAlert("error", "Error adding delivery record");
+      } else {
+        triggerAlert("submit");
+      }
     }
 
     setNewDelivery({ id: "", name: "", total_collected: "" });
@@ -193,6 +231,18 @@ const Home = ({ user }) => {
       triggerAlert("error", "Error claiming points");
     } else {
       triggerAlert("claim");
+
+      // Update deliveries to mark the claim
+      const { error: updateError } = await supabase
+        .from("deliveries")
+        .update({ claimed: true })
+        .eq("driver_id", selectedDriverId)
+        .eq("client_id", user.client_id)
+        .order("date", { ascending: true })
+        .limit(1);  // Mark the earliest unclaimed delivery
+      if (updateError) {
+        console.error("Error updating claim status:", updateError);
+      }
     }
 
     setShowConfirmClaimModal(false);
@@ -262,6 +312,27 @@ const Home = ({ user }) => {
     }
   };
 
+  const fetchDriverDetails = async (driverId) => {
+    const { data, error } = await supabase
+      .from("deliveries")
+      .select("*")
+      .eq("driver_id", driverId)
+      .eq("client_id", user.client_id)
+      .order("date", { ascending: false });
+
+    if (error) {
+      console.error("Error fetching driver details:", error);
+      triggerAlert("error", "Error fetching driver details");
+    } else {
+      setDriverDetails(data);
+      setShowDriverDetailsModal(true);
+    }
+  };
+
+  const filteredDriverDetails = driverDetails.filter((detail) =>
+    new Date(detail.date).toISOString().startsWith(filterMonth.toISOString().slice(0, 7))
+  );
+
   const filteredDrivers = drivers.filter(
     (driver) =>
       driver.name.toLowerCase().includes(search.toLowerCase()) ||
@@ -287,7 +358,7 @@ const Home = ({ user }) => {
             Drivers Incentive Program
           </h1>
           <p className="text-center text-gray-600 mt-2">
-            powered by <span className="font-medium">whitesoft</span>{" "}
+            powered by <span className="font-medium">whitesoft</span>
           </p>
         </div>
 
@@ -320,7 +391,7 @@ const Home = ({ user }) => {
               placeholder="Enter Driver ID"
               value={newDelivery.id}
               onChange={handleInputChange}
-              className=" appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
+              className="appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
             />
           </div>
           <div className="mb-4">
@@ -336,7 +407,7 @@ const Home = ({ user }) => {
               placeholder="Driver Name"
               value={newDelivery.name}
               onChange={handleInputChange}
-              className=" appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
+              className="appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
               disabled
             />
           </div>
@@ -349,16 +420,17 @@ const Home = ({ user }) => {
             </label>
             <input
               type="number"
+              step="0.01"
               name="total_collected"
               placeholder="Enter Amount Delivered"
               value={newDelivery.total_collected}
               onChange={handleInputChange}
-              className=" appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
+              className="appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
             />
           </div>
           <button
             onClick={handleAddDelivery}
-            className="bg-blue-500 hover:bg-blue-700 mx-14px   text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline transition-colors duration-300"
+            className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline transition-colors duration-300"
           >
             Submit
           </button>
@@ -376,7 +448,7 @@ const Home = ({ user }) => {
                 placeholder="Search"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className=" appearance-none border rounded w-full py-2 pl-10 pr-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
+                className="appearance-none border rounded w-full py-2 pl-10 pr-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
               />
             </div>
             <button
@@ -391,79 +463,79 @@ const Home = ({ user }) => {
             <p className="text-gray-600">Loading drivers...</p>
           ) : (
             <div className="overflow-y-auto h-[400px] 2xl:h-[700px]">
-            <div className="overflow-x-auto rounded-lg border border-gray-200">
-              <table className="min-w-full divide-y-2 divide-gray-200 bg-white text-sm">
-                <thead className="bg-gray-200 ">
-                  <tr>
-                    <th className="whitespace-nowrap text-center px-4 py-2 font-medium text-gray-900 ">
-                      ID
-                    </th>
-                    <th className="whitespace-nowrap text-center px-4 py-2 font-medium text-gray-900 ">
-                      Name
-                    </th>
-                    <th className="whitespace-nowrap text-center px-4 py-2 font-medium text-gray-900 ">
-                      Total Amount Delivered
-                    </th>
-                    <th className="whitespace-nowrap text-center px-4 py-2 font-medium text-gray-900 ">
-                      Points
-                    </th>
-                    <th className="whitespace-nowrap text-center px-4 py-2 font-medium text-gray-900 ">
-                      Date
-                    </th>
-                    <th className="whitespace-nowrap text-center px-4 py-2 font-medium text-gray-900 ">
-                      Action
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-200">
-                  {filteredDrivers.map((driver) => (
-                    <tr
-                      key={driver.driver_id}
-                      className="hover:bg-gray-100 text-center transition-colors duration-300"
-                    >
-                      <td className="whitespace-nowrap text-center px-4 py-2 font-medium text-gray-900 ">
-                        {driver.driver_id}
-                      </td>
-                      <td className="whitespace-nowrap text-center px-4 py-2 text-gray-700 ">
-                        {driver.name}
-                      </td>
-                      <td className="whitespace-nowrap text-center px-4 py-2 text-gray-700 ">
-                        {driver.total_collected}
-                      </td>
-                      <td className="whitespace-nowrap text-center px-4 py-2 text-gray-700 ">
-                        {driver.points}
-                      </td>
-                      <td className="whitespace-nowrap text-center px-4 py-2 text-gray-700 ">
-                        {new Date(driver.created_at).toLocaleDateString()}
-                      </td>
-                      <td className="whitespace-nowrap text-center px-4 py-2 ">
-                        <button
-                          className={`bg-yellow-500 hover:bg-yellow-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline transition-colors duration-300 ${
-                            driver.total_collected < 100000
-                              ? "opacity-50 cursor-not-allowed"
-                              : ""
-                          }`}
-                          onClick={() => handleClaim(driver.driver_id)}
-                          disabled={driver.total_collected < 100000}
-                        >
-                          <FaClipboardCheck className="mr-2" />
-                          Claim
-                        </button>
-                        <button
-                          className="bg-red-500 hover:bg-red-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline transition-colors duration-300 ml-2"
-                          onClick={() => handleDeleteConfirm(driver.driver_id)}
-                        >
-                          <FaTrashAlt className="mr-2" />
-                          Delete
-                        </button>
-                      </td>
+              <div className="overflow-x-auto rounded-lg border border-gray-200">
+                <table className="min-w-full divide-y-2 divide-gray-200 bg-white text-sm">
+                  <thead className="bg-gray-200">
+                    <tr>
+                      <th className="whitespace-nowrap text-center px-4 py-2 font-medium text-gray-900">
+                        ID
+                      </th>
+                      <th className="whitespace-nowrap text-center px-4 py-2 font-medium text-gray-900">
+                        Name
+                      </th>
+                      <th className="whitespace-nowrap text-center px-4 py-2 font-medium text-gray-900">
+                        Total Amount Delivered
+                      </th>
+                      <th className="whitespace-nowrap text-center px-4 py-2 font-medium text-gray-900">
+                        Points
+                      </th>
+                      <th className="whitespace-nowrap text-center px-4 py-2 font-medium text-gray-900">
+                        Action
+                      </th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200">
+                    {filteredDrivers.map((driver) => (
+                      <tr
+                        key={driver.driver_id}
+                        className="hover:bg-gray-100 text-center transition-colors duration-300"
+                      >
+                        <td className="whitespace-nowrap text-center px-4 py-2 font-medium text-gray-900">
+                          {driver.driver_id}
+                        </td>
+                        <td className="whitespace-nowrap text-center px-4 py-2 text-gray-700">
+                          {driver.name}
+                        </td>
+                        <td className="whitespace-nowrap text-center px-4 py-2 text-gray-700">
+                          {driver.total_collected}
+                        </td>
+                        <td className="whitespace-nowrap text-center px-4 py-2 text-gray-700">
+                          {driver.points}
+                        </td>
+                        <td className="whitespace-nowrap text-center px-4 py-2">
+                          <button
+                            className={`bg-yellow-500 hover:bg-yellow-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline transition-colors duration-300 ${
+                              driver.total_collected < 100000
+                                ? "opacity-50 cursor-not-allowed"
+                                : ""
+                            }`}
+                            onClick={() => handleClaim(driver.driver_id)}
+                            disabled={driver.total_collected < 100000}
+                          >
+                            <FaClipboardCheck className="mr-2" />
+                            Claim
+                          </button>
+                          <button
+                            className="bg-red-500 hover:bg-red-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline transition-colors duration-300 ml-2"
+                            onClick={() => handleDeleteConfirm(driver.driver_id)}
+                          >
+                            <FaTrashAlt className="mr-2" />
+                            Delete
+                          </button>
+                          <button
+                            className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline transition-colors duration-300 ml-2"
+                            onClick={() => fetchDriverDetails(driver.driver_id)}
+                          >
+                            <FaEye className="mr-2" />
+                            View
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
-          </div>
-          
           )}
         </div>
       </div>
@@ -525,15 +597,13 @@ const Home = ({ user }) => {
       {showAddDriverModal && (
         <div className="fixed inset-0 flex items-center justify-center bg-gray-600 bg-opacity-50">
           <div className="bg-white p-6 rounded shadow-md">
-            <h2 className="text-2xl font-bold mb-4 text-gray-800">
-              Add Driver
-            </h2>
+            <h2 className="text-2xl font-bold mb-4 text-gray-800">Add Driver</h2>
             <input
               type="text"
               placeholder="Driver Name"
               value={newDriverName}
               onChange={(e) => setNewDriverName(e.target.value)}
-              className=" appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline mb-4"
+              className="appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline mb-4"
             />
             <div className="flex justify-end">
               <button
@@ -553,20 +623,80 @@ const Home = ({ user }) => {
         </div>
       )}
 
-<AnimatePresence>
-  {showAlert && alertConfig && (
-    <motion.div
-      initial={{ x: 300, opacity: 0 }}
-      animate={{ x: 0, opacity: 1 }}
-      exit={{ x: 300, opacity: 0 }}
-      className={`fixed top-20 right-4 flex items-center px-4 py-3 rounded-lg shadow-md ${alertConfig.color} text-white`}
-    >
-      {alertConfig.icon}
-      <span className="ml-2">{alertConfig.message}</span>
-    </motion.div>
-  )}
-</AnimatePresence>
+      {showDriverDetailsModal && (
+        <div className="fixed inset-0 flex items-center justify-center bg-gray-600 bg-opacity-50">
+          <div className="bg-white p-6 rounded shadow-md w-full max-w-lg">
+            <h2 className="text-2xl font-bold mb-4 text-gray-800">
+              Driver Details
+            </h2>
+            <DatePicker
+              selected={filterMonth}
+              onChange={(date) => setFilterMonth(date)}
+              dateFormat="MM/yyyy"
+              showMonthYearPicker
+              className="mb-4 border rounded px-3 py-2 text-gray-700"
+            />
+            <table className="min-w-full divide-y divide-gray-200 bg-white text-sm mb-4">
+              <thead className="bg-gray-200">
+                <tr>
+                  <th className="whitespace-nowrap text-left px-4 py-2 font-medium text-gray-900">
+                    Date
+                  </th>
+                  <th className="whitespace-nowrap text-left px-4 py-2 font-medium text-gray-900">
+                    Amount Delivered
+                  </th>
+                  <th className="whitespace-nowrap text-left px-4 py-2 font-medium text-gray-900">
+                    Claimed
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-200">
+                {filteredDriverDetails.map((detail) => (
+                  <tr key={detail.id}>
+                    <td className="whitespace-nowrap px-4 py-2 text-gray-700">
+                      {new Date(detail.date).toLocaleDateString()}
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-2 text-gray-700">
+                      {detail.amount}
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-2 text-gray-700">
+                      {detail.claimed ? (
+                        <span className="bg-green-500 text-white px-2 py-1 rounded">
+                          Claimed
+                        </span>
+                      ) : (
+                        ""
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <div className="flex justify-end">
+              <button
+                onClick={() => setShowDriverDetailsModal(false)}
+                className="bg-gray-500 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline transition-colors duration-300"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
+      <AnimatePresence>
+        {showAlert && alertConfig && (
+          <motion.div
+            initial={{ x: 300, opacity: 0 }}
+            animate={{ x: 0, opacity: 1 }}
+            exit={{ x: 300, opacity: 0 }}
+            className={`fixed top-20 right-4 flex items-center px-4 py-3 rounded-lg shadow-md ${alertConfig.color} text-white`}
+          >
+            {alertConfig.icon}
+            <span className="ml-2">{alertConfig.message}</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };
