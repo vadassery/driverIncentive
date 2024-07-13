@@ -1,6 +1,5 @@
 import { useState, useEffect } from "react";
 import { supabase } from "../supabase";
-import { motion, AnimatePresence } from "framer-motion";
 import { ToastContainer, toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import {
@@ -31,39 +30,14 @@ const Home = ({ user }) => {
   const [selectedDriverId, setSelectedDriverId] = useState(null);
   const [showAddDriverModal, setShowAddDriverModal] = useState(false);
   const [newDriverName, setNewDriverName] = useState("");
-  const [showAlert, setShowAlert] = useState(false);
-  const [alertConfig, setAlertConfig] = useState(null);
   const [showDriverDetailsModal, setShowDriverDetailsModal] = useState(false);
   const [driverDetails, setDriverDetails] = useState([]);
   const [filterMonth, setFilterMonth] = useState(new Date());
 
-  const alertConfigs = {
-    delete: {
-      color: "bg-red-500",
-      icon: <FaTrashAlt className="text-white" />,
-      message: "Driver deleted successfully!",
-    },
-    submit: {
-      color: "bg-blue-500",
-      icon: <FaCheck className="text-white" />,
-      message: "Delivery details added successfully!",
-    },
-    claim: {
-      color: "bg-yellow-500",
-      icon: <FaClipboardCheck className="text-white" />,
-      message: "Points claimed successfully!",
-    },
-    add: {
-      color: "bg-green-500",
-      icon: <FaPlus className="text-white" />,
-      message: "Driver added successfully!",
-    },
-    error: {
-      color: "bg-red-500",
-      icon: <FaBan className="text-white" />,
-      message: "An error occurred!",
-    },
-  };
+  const notifySuccess = (message) => toast.success(message);
+  const notifyError = (message) => toast.error(message);
+  const notifyInfo = (message) => toast.info(message);
+  const notifyWarning = (message) => toast.warning(message);
 
   useEffect(() => {
     fetchDrivers();
@@ -128,7 +102,7 @@ const Home = ({ user }) => {
 
     if (error) {
       console.error("Error fetching drivers:", error);
-      triggerAlert("error", "Error fetching drivers");
+      notifyError("Error fetching drivers");
     } else {
       setDrivers(data);
     }
@@ -170,7 +144,7 @@ const Home = ({ user }) => {
 
     if (error || !driver) {
       console.error("Driver not found:", error);
-      triggerAlert("error", "Driver not found");
+      notifyError("Driver not found");
       return;
     }
 
@@ -184,21 +158,23 @@ const Home = ({ user }) => {
 
     if (updateError) {
       console.error("Error updating delivery:", updateError);
-      triggerAlert("error", "Error updating delivery");
+      notifyError("Error updating delivery");
     } else {
       const { error: insertError } = await supabase.from("deliveries").insert({
         driver_id: newDelivery.id,
         client_id: user.client_id,
         date: new Date().toISOString(),
         amount: parseFloat(newDelivery.total_collected),
-        claimed: updatedTotal >= 100000,  // Mark as claimed if threshold is reached
       });
 
       if (insertError) {
         console.error("Error adding delivery record:", insertError);
-        triggerAlert("error", "Error adding delivery record");
+        notifyError("Error adding delivery record");
       } else {
-        triggerAlert("submit");
+        notifySuccess("Delivery details added successfully!");
+        if (updatedTotal >= 100000) {
+          notifySuccess(`${driver.name} has reached the target and can claim points!`);
+        }
       }
     }
 
@@ -228,20 +204,22 @@ const Home = ({ user }) => {
 
     if (error) {
       console.error("Error claiming points:", error);
-      triggerAlert("error", "Error claiming points");
+      notifyError("Error claiming points");
     } else {
-      triggerAlert("claim");
-
-      // Update deliveries to mark the claim
-      const { error: updateError } = await supabase
+      notifySuccess("Points claimed successfully!");
+      const { error: updateDeliveriesError } = await supabase
         .from("deliveries")
         .update({ claimed: true })
         .eq("driver_id", selectedDriverId)
         .eq("client_id", user.client_id)
-        .order("date", { ascending: true })
-        .limit(1);  // Mark the earliest unclaimed delivery
-      if (updateError) {
-        console.error("Error updating claim status:", updateError);
+        .order("date", { ascending: false })
+        .limit(1);
+
+      if (updateDeliveriesError) {
+        console.error("Error updating deliveries:", updateDeliveriesError);
+        notifyError("Error updating deliveries");
+      } else {
+        fetchDriverDetails(selectedDriverId);
       }
     }
 
@@ -262,13 +240,24 @@ const Home = ({ user }) => {
 
     if (error) {
       console.error("Error deleting driver:", error);
-      triggerAlert("error", "Error deleting driver");
+      notifyError("Error deleting driver");
     } else {
-      setDrivers((prevDrivers) =>
-        prevDrivers.filter((driver) => driver.driver_id !== selectedDriverId)
-      );
-      triggerAlert("delete");
-      setSelectedDriverId(null);
+      const { error: deleteDeliveriesError } = await supabase
+        .from("deliveries")
+        .delete()
+        .eq("driver_id", selectedDriverId)
+        .eq("client_id", user.client_id);
+
+      if (deleteDeliveriesError) {
+        console.error("Error deleting deliveries:", deleteDeliveriesError);
+        notifyError("Error deleting deliveries");
+      } else {
+        setDrivers((prevDrivers) =>
+          prevDrivers.filter((driver) => driver.driver_id !== selectedDriverId)
+        );
+        notifySuccess("Driver deleted successfully!");
+        setSelectedDriverId(null);
+      }
     }
 
     setShowConfirmDeleteModal(false);
@@ -290,7 +279,7 @@ const Home = ({ user }) => {
 
     if (fetchError && fetchError.code !== "PGRST116") {
       console.error("Error fetching last driver ID:", fetchError);
-      triggerAlert("error", "Error fetching last driver ID");
+      notifyError("Error fetching last driver ID");
       return;
     }
 
@@ -304,11 +293,11 @@ const Home = ({ user }) => {
 
     if (insertError) {
       console.error("Error adding driver:", insertError);
-      triggerAlert("error", "Error adding driver");
+      notifyError("Error adding driver");
     } else {
+      notifySuccess("Driver added successfully!");
       setNewDriverName("");
       setShowAddDriverModal(false);
-      triggerAlert("add");
     }
   };
 
@@ -322,7 +311,7 @@ const Home = ({ user }) => {
 
     if (error) {
       console.error("Error fetching driver details:", error);
-      triggerAlert("error", "Error fetching driver details");
+      notifyError("Error fetching driver details");
     } else {
       setDriverDetails(data);
       setShowDriverDetailsModal(true);
@@ -339,19 +328,9 @@ const Home = ({ user }) => {
       driver.driver_id.toString().includes(search)
   );
 
-  const triggerAlert = (type, message = null) => {
-    const config = alertConfigs[type] || alertConfigs.error;
-    if (message) {
-      config.message = message;
-    }
-    setAlertConfig(config);
-    setShowAlert(true);
-    setTimeout(() => setShowAlert(false), 1500);
-  };
-
   return (
     <div className="mx-auto p-4 bg-gray-100 min-h-screen">
-      <ToastContainer />
+      <ToastContainer autoClose="2000" />
       <header className="flex justify-between items-center mb-6">
         <div className="flex flex-col items-center">
           <h1 className="text-3xl text-center font-bold text-gray-800">
@@ -456,7 +435,7 @@ const Home = ({ user }) => {
               className="bg-green-500 hover:bg-green-700 flex text-white font-bold pt-2 px-4 rounded focus:outline-none focus:shadow-outline transition-colors duration-300"
             >
               <FaPlus className="mr-2 mt-1" />
-              <div> Add </div>
+              <div>Add</div>
             </button>
           </div>
           {loading ? (
@@ -636,42 +615,37 @@ const Home = ({ user }) => {
               showMonthYearPicker
               className="mb-4 border rounded px-3 py-2 text-gray-700"
             />
-            <table className="min-w-full divide-y divide-gray-200 bg-white text-sm mb-4">
-              <thead className="bg-gray-200">
-                <tr>
-                  <th className="whitespace-nowrap text-left px-4 py-2 font-medium text-gray-900">
-                    Date
-                  </th>
-                  <th className="whitespace-nowrap text-left px-4 py-2 font-medium text-gray-900">
-                    Amount Delivered
-                  </th>
-                  <th className="whitespace-nowrap text-left px-4 py-2 font-medium text-gray-900">
-                    Claimed
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-200">
-                {filteredDriverDetails.map((detail) => (
-                  <tr key={detail.id}>
-                    <td className="whitespace-nowrap px-4 py-2 text-gray-700">
-                      {new Date(detail.date).toLocaleDateString()}
-                    </td>
-                    <td className="whitespace-nowrap px-4 py-2 text-gray-700">
-                      {detail.amount}
-                    </td>
-                    <td className="whitespace-nowrap px-4 py-2 text-gray-700">
-                      {detail.claimed ? (
-                        <span className="bg-green-500 text-white px-2 py-1 rounded">
-                          Claimed
-                        </span>
-                      ) : (
-                        ""
-                      )}
-                    </td>
+            <div className="overflow-y-auto h-[400px]">
+              <table className="min-w-full divide-y divide-gray-200 bg-white text-sm mb-4">
+                <thead className="bg-gray-200">
+                  <tr>
+                    <th className="whitespace-nowrap text-left px-4 py-2 font-medium text-gray-900">
+                      Date
+                    </th>
+                    <th className="whitespace-nowrap text-left px-4 py-2 font-medium text-gray-900">
+                      Amount Delivered
+                    </th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y divide-gray-200">
+                  {filteredDriverDetails.map((detail, index) => (
+                    <tr key={index}>
+                      <td className="whitespace-nowrap px-4 py-2 text-gray-700">
+                        {new Date(detail.date).toLocaleDateString()}
+                        {detail.claimed && (
+                          <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
+                            Claimed
+                          </span>
+                        )}
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-2 text-gray-700">
+                        {detail.amount}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
             <div className="flex justify-end">
               <button
                 onClick={() => setShowDriverDetailsModal(false)}
@@ -683,20 +657,6 @@ const Home = ({ user }) => {
           </div>
         </div>
       )}
-
-      <AnimatePresence>
-        {showAlert && alertConfig && (
-          <motion.div
-            initial={{ x: 300, opacity: 0 }}
-            animate={{ x: 0, opacity: 1 }}
-            exit={{ x: 300, opacity: 0 }}
-            className={`fixed top-20 right-4 flex items-center px-4 py-3 rounded-lg shadow-md ${alertConfig.color} text-white`}
-          >
-            {alertConfig.icon}
-            <span className="ml-2">{alertConfig.message}</span>
-          </motion.div>
-        )}
-      </AnimatePresence>
     </div>
   );
 };
