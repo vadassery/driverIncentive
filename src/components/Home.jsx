@@ -396,12 +396,12 @@ const Home = ({ user }) => {
               htmlFor="driverId"
               className="block text-gray-700 font-bold mb-2"
             >
-              Driver ID
+               ID
             </label>
             <input
               type="number"
               name="id"
-              placeholder="Enter Driver ID"
+              placeholder="Enter ID"
               value={newDelivery.id}
               onChange={handleInputChange}
               className="appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
@@ -412,12 +412,12 @@ const Home = ({ user }) => {
               htmlFor="driverName"
               className="block text-gray-700 font-bold mb-2"
             >
-              Driver Name
+               Name
             </label>
             <input
               type="text"
               name="name"
-              placeholder="Driver Name"
+              placeholder="Name"
               value={newDelivery.name}
               onChange={handleInputChange}
               className="appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
@@ -469,7 +469,7 @@ const Home = ({ user }) => {
         <div className="bg-white col-span-3 rounded-lg shadow-md px-6 py-3">
 
         <div className="flex flex-col md:flex-row mb-4 justify-between items-center">
-  <h2 className="text-xl font-bold mb-4 md:mb-0 text-gray-800">Drivers List</h2>
+  <h2 className="text-xl font-bold mb-4 md:mb-0 text-gray-800">Employee List</h2>
   <button
     onClick={generatePDF}
     className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline transition-colors duration-300 flex items-center"
@@ -543,7 +543,7 @@ const Home = ({ user }) => {
                         Name
                       </th>
                       <th className="whitespace-nowrap text-center px-4 py-2 font-medium text-gray-900">
-                        Total Amount Delivered
+                         Amount Delivered
                       </th>
                       <th className="whitespace-nowrap text-center px-4 py-2 font-medium text-gray-900">
                         Unclaimed Points
@@ -678,10 +678,10 @@ const Home = ({ user }) => {
       {showAddDriverModal && (
         <div className="fixed  inset-0 flex items-center justify-center bg-gray-600 bg-opacity-50">
           <div className="bg-white p-6 rounded shadow-md  w-full max-w-lg">
-            <h2 className="text-2xl font-bold mb-4 text-gray-800">Add Driver</h2>
+            <h2 className="text-2xl font-bold mb-4 text-gray-800">Add </h2>
             <input
               type="text"
-              placeholder="Driver Name"
+              placeholder="Name"
               value={newDriver.name}
               onChange={(e) => setNewDriver((prev) => ({ ...prev, name: e.target.value }))}
               className="appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline mb-4"
