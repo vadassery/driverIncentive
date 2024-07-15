@@ -12,9 +12,12 @@ import {
   FaCheck,
   FaBan,
   FaEye,
+  FaDownload,
 } from "react-icons/fa";
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
+import jsPDF from "jspdf";
+import "jspdf-autotable";
 
 const Home = ({ user }) => {
   const [drivers, setDrivers] = useState([]);
@@ -23,13 +26,16 @@ const Home = ({ user }) => {
     id: "",
     name: "",
     total_collected: "",
+    bill_number: "",
   });
   const [search, setSearch] = useState("");
+  const [filterRole, setFilterRole] = useState("All");
+  const [filterPoints, setFilterPoints] = useState("All");
   const [showConfirmClaimModal, setShowConfirmClaimModal] = useState(false);
   const [showConfirmDeleteModal, setShowConfirmDeleteModal] = useState(false);
   const [selectedDriverId, setSelectedDriverId] = useState(null);
   const [showAddDriverModal, setShowAddDriverModal] = useState(false);
-  const [newDriverName, setNewDriverName] = useState("");
+  const [newDriver, setNewDriver] = useState({ name: "", role: "Driver" });
   const [showDriverDetailsModal, setShowDriverDetailsModal] = useState(false);
   const [driverDetails, setDriverDetails] = useState([]);
   const [filterMonth, setFilterMonth] = useState(new Date());
@@ -150,9 +156,22 @@ const Home = ({ user }) => {
 
     const updatedTotal =
       driver.total_collected + parseFloat(newDelivery.total_collected);
+    let unclaimedPoints = driver.unclaimed_points || 0;
+    let claimedPoints = driver.claimed_points || 0;
+    let claimedDelivery = false;
+
+    if (updatedTotal >= 100000) {
+      unclaimedPoints += 1;
+      claimedDelivery = true;
+    }
+
     const { error: updateError } = await supabase
       .from("drivers")
-      .update({ total_collected: updatedTotal })
+      .update({
+        total_collected: updatedTotal,
+        unclaimed_points: unclaimedPoints,
+        claimed_points: claimedPoints,
+      })
       .eq("driver_id", newDelivery.id)
       .eq("client_id", user.client_id);
 
@@ -165,6 +184,8 @@ const Home = ({ user }) => {
         client_id: user.client_id,
         date: new Date().toISOString(),
         amount: parseFloat(newDelivery.total_collected),
+        bill_number: newDelivery.bill_number,
+        claimed: claimedDelivery,
       });
 
       if (insertError) {
@@ -178,7 +199,7 @@ const Home = ({ user }) => {
       }
     }
 
-    setNewDelivery({ id: "", name: "", total_collected: "" });
+    setNewDelivery({ id: "", name: "", total_collected: "", bill_number: "" });
   };
 
   const handleClaim = (driverId) => {
@@ -193,12 +214,16 @@ const Home = ({ user }) => {
     const driver = drivers.find((d) => d.driver_id === selectedDriverId);
     if (!driver) return;
 
-    const updatedPoints = driver.points + 1;
-    const updatedTotal = driver.total_collected - 100000; // Reset claim condition
+    const unclaimedPoints = Math.max(driver.unclaimed_points - 1, 0);
+    const claimedPoints = (driver.claimed_points || 0) + 1;
 
     const { error } = await supabase
       .from("drivers")
-      .update({ points: updatedPoints, total_collected: updatedTotal })
+      .update({
+        unclaimed_points: unclaimedPoints,
+        claimed_points: claimedPoints,
+        total_collected: 0, // Reset total amount delivered
+      })
       .eq("driver_id", selectedDriverId)
       .eq("client_id", user.client_id);
 
@@ -207,20 +232,6 @@ const Home = ({ user }) => {
       notifyError("Error claiming points");
     } else {
       notifySuccess("Points claimed successfully!");
-      const { error: updateDeliveriesError } = await supabase
-        .from("deliveries")
-        .update({ claimed: true })
-        .eq("driver_id", selectedDriverId)
-        .eq("client_id", user.client_id)
-        .order("date", { ascending: false })
-        .limit(1);
-
-      if (updateDeliveriesError) {
-        console.error("Error updating deliveries:", updateDeliveriesError);
-        notifyError("Error updating deliveries");
-      } else {
-        fetchDriverDetails(selectedDriverId);
-      }
     }
 
     setShowConfirmClaimModal(false);
@@ -287,8 +298,11 @@ const Home = ({ user }) => {
 
     const { error: insertError } = await supabase.from("drivers").insert({
       driver_id: newDriverId,
-      name: newDriverName,
+      name: newDriver.name,
       client_id: user.client_id,
+      role: newDriver.role,
+      unclaimed_points: 0,
+      claimed_points: 0,
     });
 
     if (insertError) {
@@ -296,7 +310,7 @@ const Home = ({ user }) => {
       notifyError("Error adding driver");
     } else {
       notifySuccess("Driver added successfully!");
-      setNewDriverName("");
+      setNewDriver({ name: "", role: "Driver" });
       setShowAddDriverModal(false);
     }
   };
@@ -322,15 +336,35 @@ const Home = ({ user }) => {
     new Date(detail.date).toISOString().startsWith(filterMonth.toISOString().slice(0, 7))
   );
 
-  const filteredDrivers = drivers.filter(
-    (driver) =>
-      driver.name.toLowerCase().includes(search.toLowerCase()) ||
-      driver.driver_id.toString().includes(search)
-  );
+  const filteredDrivers = drivers.filter((driver) => {
+    const matchesSearch = driver.name.toLowerCase().includes(search.toLowerCase()) ||
+                          driver.driver_id.toString().includes(search);
+    const matchesRole = filterRole === "All" || driver.role === filterRole;
+    const matchesPoints = filterPoints === "All" ||
+                          (filterPoints === "Claimed" && driver.claimed_points > 0) ||
+                          (filterPoints === "Unclaimed" && driver.unclaimed_points > 0);
+    return matchesSearch && matchesRole && matchesPoints;
+  });
+
+  const generatePDF = () => {
+    const doc = new jsPDF();
+    doc.autoTable({
+      head: [['ID', 'Name', 'Total Amount Delivered', 'Unclaimed Points', 'Claimed Points', 'Role']],
+      body: filteredDrivers.map(driver => [
+        driver.driver_id,
+        driver.name,
+        driver.total_collected,
+        driver.unclaimed_points,
+        driver.claimed_points,
+        driver.role,
+      ]),
+    });
+    doc.save('drivers_list.pdf');
+  };
 
   return (
     <div className="mx-auto p-4 bg-gray-100 min-h-screen">
-      <ToastContainer autoClose="2000" />
+      <ToastContainer autoClose={2000} />
       <header className="flex justify-between items-center mb-6">
         <div className="flex flex-col items-center">
           <h1 className="text-3xl text-center font-bold text-gray-800">
@@ -392,6 +426,22 @@ const Home = ({ user }) => {
           </div>
           <div className="mb-4">
             <label
+              htmlFor="billNumber"
+              className="block text-gray-700 font-bold mb-2"
+            >
+              Bill Number
+            </label>
+            <input
+              type="text"
+              name="bill_number"
+              placeholder="Enter Bill Number"
+              value={newDelivery.bill_number}
+              onChange={handleInputChange}
+              className="appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
+            />
+          </div>
+          <div className="mb-4">
+            <label
               htmlFor="deliveredAmount"
               className="block text-gray-700 font-bold mb-2"
             >
@@ -407,6 +457,7 @@ const Home = ({ user }) => {
               className="appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
             />
           </div>
+  
           <button
             onClick={handleAddDelivery}
             className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline transition-colors duration-300"
@@ -416,28 +467,67 @@ const Home = ({ user }) => {
         </div>
 
         <div className="bg-white col-span-3 rounded-lg shadow-md px-6 py-3">
-          <h2 className="text-xl font-bold mb-4 text-gray-800">Drivers List</h2>
-          <div className="flex mb-4">
-            <div className="relative w-full mr-2">
-              <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
-                <FaSearch className="text-gray-500" />
-              </div>
-              <input
-                type="text"
-                placeholder="Search"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="appearance-none border rounded w-full py-2 pl-10 pr-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
-              />
-            </div>
-            <button
-              onClick={() => setShowAddDriverModal(true)}
-              className="bg-green-500 hover:bg-green-700 flex text-white font-bold pt-2 px-4 rounded focus:outline-none focus:shadow-outline transition-colors duration-300"
-            >
-              <FaPlus className="mr-2 mt-1" />
-              <div>Add</div>
-            </button>
-          </div>
+
+        <div className="flex flex-col md:flex-row mb-4 justify-between items-center">
+  <h2 className="text-xl font-bold mb-4 md:mb-0 text-gray-800">Drivers List</h2>
+  <button
+    onClick={generatePDF}
+    className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline transition-colors duration-300 flex items-center"
+  >
+    <FaDownload className="mr-2" />
+    Download PDF
+  </button>
+</div>
+
+<div className="flex flex-col md:flex-row mb-4">
+  <div className="relative w-full md:mr-2 mb-4 md:mb-0">
+    <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
+      <FaSearch className="text-gray-500" />
+    </div>
+    <input
+      type="text"
+      placeholder="Search"
+      value={search}
+      onChange={(e) => setSearch(e.target.value)}
+      className="appearance-none border rounded w-full py-2 pl-10 pr-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
+    />
+  </div>
+
+  <div className="relative w-full md:mr-2 mb-4 md:mb-0">
+    <select
+      value={filterRole}
+      onChange={(e) => setFilterRole(e.target.value)}
+      className="appearance-none border rounded w-full py-2 pl-3 pr-10 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
+    >
+      <option value="All">All Roles</option>
+      <option value="Driver">Driver</option>
+      <option value="Fabricator">Fabricator</option>
+      <option value="Contractor">Contractor</option>
+    </select>
+  </div>
+
+  <div className="relative w-full md:mr-2 mb-4 md:mb-0">
+    <select
+      value={filterPoints}
+      onChange={(e) => setFilterPoints(e.target.value)}
+      className="appearance-none border rounded w-full py-2 pl-3 pr-10 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
+    >
+      <option value="All">All Points</option>
+      <option value="Claimed">Claimed Points</option>
+      <option value="Unclaimed">Unclaimed Points</option>
+    </select>
+  </div>
+
+  <button
+    onClick={() => setShowAddDriverModal(true)}
+    className="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline transition-colors duration-300 flex items-center"
+  >
+    <FaPlus className="mr-2" />
+    Add
+  </button>
+</div>
+
+
           {loading ? (
             <p className="text-gray-600">Loading drivers...</p>
           ) : (
@@ -456,7 +546,13 @@ const Home = ({ user }) => {
                         Total Amount Delivered
                       </th>
                       <th className="whitespace-nowrap text-center px-4 py-2 font-medium text-gray-900">
-                        Points
+                        Unclaimed Points
+                      </th>
+                      <th className="whitespace-nowrap text-center px-4 py-2 font-medium text-gray-900">
+                        Claimed Points
+                      </th>
+                      <th className="whitespace-nowrap text-center px-4 py-2 font-medium text-gray-900">
+                        Role
                       </th>
                       <th className="whitespace-nowrap text-center px-4 py-2 font-medium text-gray-900">
                         Action
@@ -479,17 +575,23 @@ const Home = ({ user }) => {
                           {driver.total_collected}
                         </td>
                         <td className="whitespace-nowrap text-center px-4 py-2 text-gray-700">
-                          {driver.points}
+                          {driver.unclaimed_points}
+                        </td>
+                        <td className="whitespace-nowrap text-center px-4 py-2 text-gray-700">
+                          {driver.claimed_points}
+                        </td>
+                        <td className="whitespace-nowrap text-center px-4 py-2 text-gray-700">
+                          {driver.role}
                         </td>
                         <td className="whitespace-nowrap text-center px-4 py-2">
                           <button
                             className={`bg-yellow-500 hover:bg-yellow-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline transition-colors duration-300 ${
-                              driver.total_collected < 100000
+                              driver.unclaimed_points === 0
                                 ? "opacity-50 cursor-not-allowed"
                                 : ""
                             }`}
                             onClick={() => handleClaim(driver.driver_id)}
-                            disabled={driver.total_collected < 100000}
+                            disabled={driver.unclaimed_points === 0}
                           >
                             <FaClipboardCheck className="mr-2" />
                             Claim
@@ -574,16 +676,28 @@ const Home = ({ user }) => {
       )}
 
       {showAddDriverModal && (
-        <div className="fixed inset-0 flex items-center justify-center bg-gray-600 bg-opacity-50">
-          <div className="bg-white p-6 rounded shadow-md">
+        <div className="fixed  inset-0 flex items-center justify-center bg-gray-600 bg-opacity-50">
+          <div className="bg-white p-6 rounded shadow-md  w-full max-w-lg">
             <h2 className="text-2xl font-bold mb-4 text-gray-800">Add Driver</h2>
             <input
               type="text"
               placeholder="Driver Name"
-              value={newDriverName}
-              onChange={(e) => setNewDriverName(e.target.value)}
+              value={newDriver.name}
+              onChange={(e) => setNewDriver((prev) => ({ ...prev, name: e.target.value }))}
               className="appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline mb-4"
             />
+            <div className="mb-4">
+              <label className="block text-gray-700 font-bold mb-2">Role</label>
+              <select
+                value={newDriver.role}
+                onChange={(e) => setNewDriver((prev) => ({ ...prev, role: e.target.value }))}
+                className="appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
+              >
+                <option value="Driver">Driver</option>
+                <option value="Fabricator">Fabricator</option>
+                <option value="Contractor">Contractor</option>
+              </select>
+            </div>
             <div className="flex justify-end">
               <button
                 onClick={() => setShowAddDriverModal(false)}
@@ -615,12 +729,15 @@ const Home = ({ user }) => {
               showMonthYearPicker
               className="mb-4 border rounded px-3 py-2 text-gray-700"
             />
-            <div className="overflow-y-auto h-[400px]">
-              <table className="min-w-full divide-y divide-gray-200 bg-white text-sm mb-4">
+            <div className="overflow-y-auto h-[400px] 2xl:h-[700px]">
+              <table className="min-w-full divide-y-2 divide-gray-200 bg-white text-sm mb-4">
                 <thead className="bg-gray-200">
                   <tr>
                     <th className="whitespace-nowrap text-left px-4 py-2 font-medium text-gray-900">
                       Date
+                    </th>
+                    <th className="whitespace-nowrap text-left px-4 py-2 font-medium text-gray-900">
+                      Bill Number
                     </th>
                     <th className="whitespace-nowrap text-left px-4 py-2 font-medium text-gray-900">
                       Amount Delivered
@@ -628,21 +745,29 @@ const Home = ({ user }) => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
-                  {filteredDriverDetails.map((detail, index) => (
-                    <tr key={index}>
-                      <td className="whitespace-nowrap px-4 py-2 text-gray-700">
-                        {new Date(detail.date).toLocaleDateString()}
-                        {detail.claimed && (
-                          <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
-                            Claimed
-                          </span>
-                        )}
-                      </td>
-                      <td className="whitespace-nowrap px-4 py-2 text-gray-700">
-                        {detail.amount}
-                      </td>
-                    </tr>
-                  ))}
+                  {filteredDriverDetails.map((detail, index) => {
+                    const isClaimed = driverDetails
+                      .slice(0, index + 1)
+                      .reduce((acc, cur) => acc + cur.amount, 0) >= 100000 && !driverDetails.slice(0, index).some(d => d.claimed);
+                    return (
+                      <tr key={detail.id}>
+                        <td className="whitespace-nowrap px-4 py-2 text-gray-700 flex items-center">
+                          {new Date(detail.date).toLocaleDateString()}
+                          {detail.claimed && (
+                            <span className="ml-2 bg-green-100 text-green-800 text-xs font-semibold px-2.5 py-0.5 rounded dark:bg-green-200 dark:text-green-900">
+                              Claimed
+                            </span>
+                          )}
+                        </td>
+                        <td className="whitespace-nowrap px-4 py-2 text-gray-700">
+                          {detail.bill_number}
+                        </td>
+                        <td className="whitespace-nowrap px-4 py-2 text-gray-700">
+                          {detail.amount}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
