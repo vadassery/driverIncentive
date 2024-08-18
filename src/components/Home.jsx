@@ -13,6 +13,7 @@ import {
   FaBan,
   FaEye,
   FaDownload,
+  FaArrowUp, FaArrowDown
 } from "react-icons/fa";
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
@@ -31,6 +32,7 @@ const Home = ({ user }) => {
   const [search, setSearch] = useState("");
   const [filterRole, setFilterRole] = useState("All");
   const [filterPoints, setFilterPoints] = useState("All");
+  const [sortDirection, setSortDirection] = useState(null);
   const [showConfirmClaimModal, setShowConfirmClaimModal] = useState(false);
   const [showConfirmDeleteModal, setShowConfirmDeleteModal] = useState(false);
   const [selectedDriverId, setSelectedDriverId] = useState(null);
@@ -346,11 +348,21 @@ const Home = ({ user }) => {
     return matchesSearch && matchesRole && matchesPoints;
   });
 
+  const sortedDrivers = [...filteredDrivers].sort((a, b) => {
+    if (sortDirection === 'asc') {
+      return a.claimed_points - b.claimed_points;
+    } else if (sortDirection === 'desc') {
+      return b.claimed_points - a.claimed_points;
+    } else {
+      return 0;
+    }
+  });
+
   const generatePDF = () => {
     const doc = new jsPDF();
     doc.autoTable({
       head: [['ID', 'Name', 'Total Amount Delivered', 'Unclaimed Points', 'Claimed Points', 'Role']],
-      body: filteredDrivers.map(driver => [
+      body: sortedDrivers.map(driver => [
         driver.driver_id,
         driver.name,
         driver.total_collected,
@@ -470,6 +482,7 @@ const Home = ({ user }) => {
 
         <div className="flex flex-col md:flex-row mb-4 justify-between items-center">
   <h2 className="text-xl font-bold mb-4 md:mb-0 text-gray-800">Employee List</h2>
+  <div className="flex space-x-4">
   <button
     onClick={generatePDF}
     className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline transition-colors duration-300 flex items-center"
@@ -477,10 +490,17 @@ const Home = ({ user }) => {
     <FaDownload className="mr-2" />
     Download PDF
   </button>
+  <button
+    onClick={() => setShowAddDriverModal(true)}
+    className="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline transition-colors duration-300 flex items-center"
+  >
+    <FaPlus className="mr-2" />
+    Add
+  </button></div>
 </div>
 
-<div className="flex flex-col md:flex-row mb-4">
-  <div className="relative w-full md:mr-2 mb-4 md:mb-0">
+<div className="flex flex-col md:flex-row mb-4 items-center justify-between space-y-4 md:space-y-0 md:space-x-4">
+  <div className="relative w-full md:w-1/4">
     <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
       <FaSearch className="text-gray-500" />
     </div>
@@ -493,7 +513,7 @@ const Home = ({ user }) => {
     />
   </div>
 
-  <div className="relative w-full md:mr-2 mb-4 md:mb-0">
+  <div className="relative w-full md:w-1/4">
     <select
       value={filterRole}
       onChange={(e) => setFilterRole(e.target.value)}
@@ -506,7 +526,7 @@ const Home = ({ user }) => {
     </select>
   </div>
 
-  <div className="relative w-full md:mr-2 mb-4 md:mb-0">
+  <div className="relative w-full md:w-1/4">
     <select
       value={filterPoints}
       onChange={(e) => setFilterPoints(e.target.value)}
@@ -518,15 +538,25 @@ const Home = ({ user }) => {
     </select>
   </div>
 
+
+  <div className="flex items-center w-full md:w-auto">
+  <span className="mr-2">Claimed Points Sort</span>
   <button
-    onClick={() => setShowAddDriverModal(true)}
-    className="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline transition-colors duration-300 flex items-center"
+    onClick={() =>
+      setSortDirection((prev) => (prev === 'asc' ? 'desc' : 'asc'))
+    }
+    className="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-2 rounded focus:outline-none focus:shadow-outline transition-colors duration-300 flex items-center"
   >
-    <FaPlus className="mr-2" />
-    Add
+    {sortDirection === 'asc' ? (
+      <FaArrowDown className="text-lg" />
+    ) : (
+      <FaArrowUp className="text-lg" />
+    )}
   </button>
 </div>
 
+
+</div>
 
           {loading ? (
             <p className="text-gray-600">Loading drivers...</p>
@@ -560,7 +590,7 @@ const Home = ({ user }) => {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200">
-                    {filteredDrivers.map((driver) => (
+                    {sortedDrivers.map((driver) => (
                       <tr
                         key={driver.driver_id}
                         className="hover:bg-gray-100 text-center transition-colors duration-300"

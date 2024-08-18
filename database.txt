@@ -1,25 +1,41 @@
 create table
+  public.deliveries (
+    id serial not null,
+    driver_id integer not null,
+    client_id integer not null,
+    date timestamp with time zone null default now(),
+    amount numeric not null,
+    claimed boolean null default false,
+    bill_number text null,
+    constraint deliveries_pkey primary key (id),
+    constraint deliveries_driver_id_client_id_fkey foreign key (driver_id, client_id) references drivers (driver_id, client_id) on delete cascade
+  ) tablespace pg_default;
+  ,
+  create table
   public.drivers (
-    id serial,
+    id serial not null,
     driver_id integer not null,
     name text not null,
-    total_collected integer null,
-    points integer null default 0,
+    total_collected numeric null,
     created_at timestamp with time zone null default now(),
     client_id integer null,
+    role text null,
+    claimed_points integer null default 0,
+    unclaimed_points integer null default 0,
     constraint drivers_pkey primary key (id),
     constraint drivers_driver_id_client_id_key unique (driver_id, client_id)
   ) tablespace pg_default;
 
+create trigger after_driver_delete
+after delete on drivers for each row
+execute function delete_related_deliveries ();
+
 create trigger set_driver_id before insert on drivers for each row
 execute function next_driver_id ();
-
 ,
-
-
 create table
   public.users (
-    id serial,
+    id serial not null,
     username text not null,
     password text not null,
     client_name text null,
