@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { supabase } from "../supabase";
 import { ToastContainer, toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
@@ -8,12 +8,12 @@ import {
   FaSignOutAlt,
   FaTrashAlt,
   FaClipboardCheck,
-  FaTimes,
-  FaCheck,
-  FaBan,
   FaEye,
   FaDownload,
-  FaArrowUp, FaArrowDown
+  FaArrowUp,
+  FaArrowDown,
+  FaEdit,
+  FaEllipsisV, // Imported FaEllipsisV icon for the dropdown
 } from "react-icons/fa";
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
@@ -37,10 +37,28 @@ const Home = ({ user }) => {
   const [showConfirmDeleteModal, setShowConfirmDeleteModal] = useState(false);
   const [selectedDriverId, setSelectedDriverId] = useState(null);
   const [showAddDriverModal, setShowAddDriverModal] = useState(false);
-  const [newDriver, setNewDriver] = useState({ name: "", role: "Driver" });
+  const [newDriver, setNewDriver] = useState({
+    name: "",
+    role: "Driver",
+    place: "",
+    phone_no: "",
+  }); // Updated newDriver state
   const [showDriverDetailsModal, setShowDriverDetailsModal] = useState(false);
   const [driverDetails, setDriverDetails] = useState([]);
   const [filterMonth, setFilterMonth] = useState(new Date());
+
+  // States for Edit Driver Modal
+  const [showEditDriverModal, setShowEditDriverModal] = useState(false);
+  const [editDriver, setEditDriver] = useState({
+    id: null,
+    name: "",
+    place: "",
+    phone_no: "",
+  });
+
+  // State to track which driver's dropdown is open
+  const [openDropdownId, setOpenDropdownId] = useState(null);
+  const dropdownRef = useRef(null);
 
   const notifySuccess = (message) => toast.success(message);
   const notifyError = (message) => toast.error(message);
@@ -72,9 +90,22 @@ const Home = ({ user }) => {
       )
       .subscribe();
 
+    // Event listener to handle clicks outside the dropdown
+    const handleClickOutside = (event) => {
+      if (
+        dropdownRef.current &&
+        !dropdownRef.current.contains(event.target)
+      ) {
+        setOpenDropdownId(null);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+
     return () => {
       supabase.removeChannel(driversSubscription);
       supabase.removeChannel(deliveriesSubscription);
+      document.removeEventListener("mousedown", handleClickOutside);
     };
   }, []);
 
@@ -157,7 +188,7 @@ const Home = ({ user }) => {
     }
 
     const updatedTotal =
-      driver.total_collected + parseFloat(newDelivery.total_collected);
+      (driver.total_collected || 0) + parseFloat(newDelivery.total_collected);
     let unclaimedPoints = driver.unclaimed_points || 0;
     let claimedPoints = driver.claimed_points || 0;
     let claimedDelivery = false;
@@ -201,7 +232,12 @@ const Home = ({ user }) => {
       }
     }
 
-    setNewDelivery({ id: "", name: "", total_collected: "", bill_number: "" });
+    setNewDelivery({
+      id: "",
+      name: "",
+      total_collected: "",
+      bill_number: "",
+    });
   };
 
   const handleClaim = (driverId) => {
@@ -282,6 +318,12 @@ const Home = ({ user }) => {
   };
 
   const addDriver = async () => {
+    // Validate inputs
+    if (!newDriver.name || !newDriver.place || !newDriver.phone_no) {
+      notifyWarning("Please fill in all fields.");
+      return;
+    }
+
     const { data: lastDriver, error: fetchError } = await supabase
       .from("drivers")
       .select("driver_id")
@@ -303,6 +345,8 @@ const Home = ({ user }) => {
       name: newDriver.name,
       client_id: user.client_id,
       role: newDriver.role,
+      place: newDriver.place, // Added place
+      phone_no: newDriver.phone_no, // Added phone_no
       unclaimed_points: 0,
       claimed_points: 0,
     });
@@ -312,7 +356,7 @@ const Home = ({ user }) => {
       notifyError("Error adding driver");
     } else {
       notifySuccess("Driver added successfully!");
-      setNewDriver({ name: "", role: "Driver" });
+      setNewDriver({ name: "", role: "Driver", place: "", phone_no: "" }); // Reset newDriver state
       setShowAddDriverModal(false);
     }
   };
@@ -339,19 +383,21 @@ const Home = ({ user }) => {
   );
 
   const filteredDrivers = drivers.filter((driver) => {
-    const matchesSearch = driver.name.toLowerCase().includes(search.toLowerCase()) ||
-                          driver.driver_id.toString().includes(search);
+    const matchesSearch =
+      driver.name.toLowerCase().includes(search.toLowerCase()) ||
+      driver.driver_id.toString().includes(search);
     const matchesRole = filterRole === "All" || driver.role === filterRole;
-    const matchesPoints = filterPoints === "All" ||
-                          (filterPoints === "Claimed" && driver.claimed_points > 0) ||
-                          (filterPoints === "Unclaimed" && driver.unclaimed_points > 0);
+    const matchesPoints =
+      filterPoints === "All" ||
+      (filterPoints === "Claimed" && driver.claimed_points > 0) ||
+      (filterPoints === "Unclaimed" && driver.unclaimed_points > 0);
     return matchesSearch && matchesRole && matchesPoints;
   });
 
   const sortedDrivers = [...filteredDrivers].sort((a, b) => {
-    if (sortDirection === 'asc') {
+    if (sortDirection === "asc") {
       return a.claimed_points - b.claimed_points;
-    } else if (sortDirection === 'desc') {
+    } else if (sortDirection === "desc") {
       return b.claimed_points - a.claimed_points;
     } else {
       return 0;
@@ -359,26 +405,148 @@ const Home = ({ user }) => {
   });
 
   const generatePDF = () => {
-    const doc = new jsPDF();
-    doc.autoTable({
-      head: [['ID', 'Name', 'Total Amount Delivered', 'Unclaimed Points', 'Claimed Points', 'Role']],
-      body: sortedDrivers.map(driver => [
-        driver.driver_id,
-        driver.name,
-        driver.total_collected,
-        driver.unclaimed_points,
-        driver.claimed_points,
-        driver.role,
-      ]),
+    const doc = new jsPDF({
+      orientation: "landscape", // Change to portrait if preferred
+      unit: "mm",
+      format: "a4",
     });
-    doc.save('drivers_list.pdf');
+  
+    // Define margins
+    const margin = {
+      top: 16,
+      right: 15,
+      bottom: 20,
+      left: 15,
+    };
+
+  
+
+  
+    // Define Table Columns
+    const tableColumn = [
+      "ID",
+      "Name",
+      "Total Amount Delivered",
+      "Unclaimed Points",
+      "Claimed Points",
+      "Role",
+
+    ];
+  
+    // Define Table Rows
+    const tableRows = sortedDrivers.map((driver) => [
+      driver.driver_id,
+      driver.name,
+      driver.total_collected,
+      driver.unclaimed_points,
+      driver.claimed_points,
+      driver.role,
+
+    ]);
+  
+    // Add AutoTable
+    doc.autoTable({
+      startY: margin.top + 0, // Position below the header
+      head: [tableColumn],
+      body: tableRows,
+      theme: "striped", // 'striped', 'grid', 'plain'
+      headStyles: {
+        fillColor: [22, 160, 133], // Teal color
+        textColor: 255,
+        fontSize: 12,
+      },
+      bodyStyles: {
+        fontSize: 10,
+      },
+      alternateRowStyles: {
+        fillColor: [238, 238, 238], // Light grey for alternate rows
+      },
+      columnStyles: {
+        0: { halign: "center" }, // ID centered
+        1: { halign: "left" }, // Name left-aligned
+        2: { halign: "right" }, // Amount Delivered right-aligned
+        3: { halign: "center" }, // Unclaimed Points centered
+        4: { halign: "center" }, // Claimed Points centered
+        5: { halign: "left" }, // Role centered
+
+      },
+      styles: {
+        overflow: "linebreak",
+        cellPadding: 3,
+      },
+      didDrawPage: function (data) {
+        // Footer
+        const pageCount = doc.internal.getNumberOfPages();
+        doc.setFontSize(10);
+        doc.setTextColor(150);
+        doc.text(
+          `Page ${doc.internal.getCurrentPageInfo().pageNumber} of ${pageCount}`,
+          data.settings.margin.left,
+          doc.internal.pageSize.getHeight() - 10
+        );
+      },
+      margin: { top: margin.top + 15 },
+      pageBreak: "auto",
+      showHead: "everyPage",
+    });
+  
+    // Save the PDF
+    doc.save("drivers_list.pdf");
+  };
+  
+
+  // Function to handle Edit button click
+  const handleEdit = (driverId) => {
+    const driver = drivers.find((d) => d.driver_id === driverId);
+    if (driver) {
+      setEditDriver({
+        id: driver.driver_id,
+        name: driver.name,
+        place: driver.place || "",
+        phone_no: driver.phone_no || "",
+      });
+      setShowEditDriverModal(true);
+    }
+  };
+
+  // Function to update driver information
+  const updateDriver = async () => {
+    // Validate inputs
+    if (!editDriver.name || !editDriver.place || !editDriver.phone_no) {
+      notifyWarning("Please fill in all fields.");
+      return;
+    }
+
+    const { error } = await supabase
+      .from("drivers")
+      .update({
+        name: editDriver.name,
+        place: editDriver.place,
+        phone_no: editDriver.phone_no,
+      })
+      .eq("driver_id", editDriver.id)
+      .eq("client_id", user.client_id);
+
+    if (error) {
+      console.error("Error updating driver:", error);
+      notifyError("Error updating driver");
+    } else {
+      notifySuccess("Driver updated successfully!");
+      setShowEditDriverModal(false);
+      fetchDrivers(); // Refresh the drivers list
+    }
+  };
+
+  // Function to toggle dropdown
+  const toggleDropdown = (driverId) => {
+    setOpenDropdownId((prevId) => (prevId === driverId ? null : driverId));
   };
 
   return (
     <div className="mx-auto p-4 bg-gray-100 min-h-screen">
       <ToastContainer autoClose={2000} />
-      <header className="flex justify-between items-center mb-6">
-        <div className="flex flex-col items-center">
+      <header className="flex flex-col md:flex-row justify-between items-center mb-6">
+        <div className="flex flex-col items-center md:items-start">
           <h1 className="text-3xl text-center font-bold text-gray-800">
             Drivers Incentive Program
           </h1>
@@ -387,10 +555,10 @@ const Home = ({ user }) => {
           </p>
         </div>
 
-        <div className="flex items-center">
+        <div className="flex items-center mt-4 md:mt-0">
           <button
             onClick={handleLogout}
-            className="bg-red-500 text-white py-2 px-4 rounded flex items-center"
+            className="bg-red-500 text-white py-2 px-4 rounded flex items-center hover:bg-red-600 transition-colors duration-300"
           >
             <FaSignOutAlt className="mr-2" />
             Logout
@@ -399,7 +567,7 @@ const Home = ({ user }) => {
       </header>
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div className="bg-white col-span-1 rounded-lg shadow-md p-6">
+        <div className="bg-white col-span-3 md:col-span-1 rounded-lg shadow-md p-6">
           <h2 className="text-xl font-bold mb-4 text-gray-800">
             Add Delivered Details
           </h2>
@@ -408,7 +576,7 @@ const Home = ({ user }) => {
               htmlFor="driverId"
               className="block text-gray-700 font-bold mb-2"
             >
-               ID
+              ID
             </label>
             <input
               type="number"
@@ -424,7 +592,7 @@ const Home = ({ user }) => {
               htmlFor="driverName"
               className="block text-gray-700 font-bold mb-2"
             >
-               Name
+              Name
             </label>
             <input
               type="text"
@@ -469,99 +637,96 @@ const Home = ({ user }) => {
               className="appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
             />
           </div>
-  
+
           <button
             onClick={handleAddDelivery}
-            className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline transition-colors duration-300"
+            className="w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline transition-colors duration-300"
           >
             Submit
           </button>
         </div>
 
         <div className="bg-white col-span-3 rounded-lg shadow-md px-6 py-3">
+          <div className="flex flex-col md:flex-row mb-4 justify-between items-center">
+            <h2 className="text-xl font-bold mb-4 md:mb-0 text-gray-800">Employee List</h2>
+            <div className="flex space-x-4">
+              <button
+                onClick={generatePDF}
+                className="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded flex items-center transition-colors duration-300"
+              >
+                <FaDownload className="mr-2" />
+                Download PDF
+              </button>
+              <button
+                onClick={() => setShowAddDriverModal(true)}
+                className="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded flex items-center transition-colors duration-300"
+              >
+                <FaPlus className="mr-2" />
+                Add
+              </button>
+            </div>
+          </div>
 
-        <div className="flex flex-col md:flex-row mb-4 justify-between items-center">
-  <h2 className="text-xl font-bold mb-4 md:mb-0 text-gray-800">Employee List</h2>
-  <div className="flex space-x-4">
-  <button
-    onClick={generatePDF}
-    className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline transition-colors duration-300 flex items-center"
-  >
-    <FaDownload className="mr-2" />
-    Download PDF
-  </button>
-  <button
-    onClick={() => setShowAddDriverModal(true)}
-    className="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline transition-colors duration-300 flex items-center"
-  >
-    <FaPlus className="mr-2" />
-    Add
-  </button></div>
-</div>
+          <div className="flex flex-col md:flex-row mb-4 items-center justify-between space-y-4 md:space-y-0 md:space-x-4">
+            <div className="relative w-full md:w-1/4">
+              <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
+                <FaSearch className="text-gray-500" />
+              </div>
+              <input
+                type="text"
+                placeholder="Search"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="appearance-none border rounded w-full py-2 pl-10 pr-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
+              />
+            </div>
 
-<div className="flex flex-col md:flex-row mb-4 items-center justify-between space-y-4 md:space-y-0 md:space-x-4">
-  <div className="relative w-full md:w-1/4">
-    <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
-      <FaSearch className="text-gray-500" />
-    </div>
-    <input
-      type="text"
-      placeholder="Search"
-      value={search}
-      onChange={(e) => setSearch(e.target.value)}
-      className="appearance-none border rounded w-full py-2 pl-10 pr-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
-    />
-  </div>
+            <div className="relative w-full md:w-1/4">
+              <select
+                value={filterRole}
+                onChange={(e) => setFilterRole(e.target.value)}
+                className="appearance-none border rounded w-full py-2 pl-3 pr-10 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
+              >
+                <option value="All">All Roles</option>
+                <option value="Driver">Driver</option>
+                <option value="Fabricator">Fabricator</option>
+                <option value="Contractor">Contractor</option>
+              </select>
+            </div>
 
-  <div className="relative w-full md:w-1/4">
-    <select
-      value={filterRole}
-      onChange={(e) => setFilterRole(e.target.value)}
-      className="appearance-none border rounded w-full py-2 pl-3 pr-10 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
-    >
-      <option value="All">All Roles</option>
-      <option value="Driver">Driver</option>
-      <option value="Fabricator">Fabricator</option>
-      <option value="Contractor">Contractor</option>
-    </select>
-  </div>
+            <div className="relative w-full md:w-1/4">
+              <select
+                value={filterPoints}
+                onChange={(e) => setFilterPoints(e.target.value)}
+                className="appearance-none border rounded w-full py-2 pl-3 pr-10 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
+              >
+                <option value="All">All Points</option>
+                <option value="Claimed">Claimed Points</option>
+                <option value="Unclaimed">Unclaimed Points</option>
+              </select>
+            </div>
 
-  <div className="relative w-full md:w-1/4">
-    <select
-      value={filterPoints}
-      onChange={(e) => setFilterPoints(e.target.value)}
-      className="appearance-none border rounded w-full py-2 pl-3 pr-10 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
-    >
-      <option value="All">All Points</option>
-      <option value="Claimed">Claimed Points</option>
-      <option value="Unclaimed">Unclaimed Points</option>
-    </select>
-  </div>
-
-
-  <div className="flex items-center w-full md:w-auto">
-  <span className="mr-2">Claimed Points Sort</span>
-  <button
-    onClick={() =>
-      setSortDirection((prev) => (prev === 'asc' ? 'desc' : 'asc'))
-    }
-    className="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-2 rounded focus:outline-none focus:shadow-outline transition-colors duration-300 flex items-center"
-  >
-    {sortDirection === 'asc' ? (
-      <FaArrowDown className="text-lg" />
-    ) : (
-      <FaArrowUp className="text-lg" />
-    )}
-  </button>
-</div>
-
-
-</div>
+            <div className="flex items-center w-full md:w-auto">
+              <span className="mr-2">Claimed Points Sort</span>
+              <button
+                onClick={() =>
+                  setSortDirection((prev) => (prev === "asc" ? "desc" : "asc"))
+                }
+                className="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-2 rounded focus:outline-none focus:shadow-outline transition-colors duration-300 flex items-center"
+              >
+                {sortDirection === "asc" ? (
+                  <FaArrowDown className="text-lg" />
+                ) : (
+                  <FaArrowUp className="text-lg" />
+                )}
+              </button>
+            </div>
+          </div>
 
           {loading ? (
             <p className="text-gray-600">Loading drivers...</p>
           ) : (
-            <div className="overflow-y-auto h-[400px] 2xl:h-[700px]">
+            <div className="overflow-x-auto">
               <div className="overflow-x-auto rounded-lg border border-gray-200">
                 <table className="min-w-full divide-y-2 divide-gray-200 bg-white text-sm">
                   <thead className="bg-gray-200">
@@ -573,7 +738,7 @@ const Home = ({ user }) => {
                         Name
                       </th>
                       <th className="whitespace-nowrap text-center px-4 py-2 font-medium text-gray-900">
-                         Amount Delivered
+                        Amount Delivered
                       </th>
                       <th className="whitespace-nowrap text-center px-4 py-2 font-medium text-gray-900">
                         Unclaimed Points
@@ -584,6 +749,7 @@ const Home = ({ user }) => {
                       <th className="whitespace-nowrap text-center px-4 py-2 font-medium text-gray-900">
                         Role
                       </th>
+                
                       <th className="whitespace-nowrap text-center px-4 py-2 font-medium text-gray-900">
                         Action
                       </th>
@@ -593,7 +759,7 @@ const Home = ({ user }) => {
                     {sortedDrivers.map((driver) => (
                       <tr
                         key={driver.driver_id}
-                        className="hover:bg-gray-100 text-center transition-colors duration-300"
+                        className="hover:bg-gray-100 transition-colors duration-300"
                       >
                         <td className="whitespace-nowrap text-center px-4 py-2 font-medium text-gray-900">
                           {driver.driver_id}
@@ -613,9 +779,11 @@ const Home = ({ user }) => {
                         <td className="whitespace-nowrap text-center px-4 py-2 text-gray-700">
                           {driver.role}
                         </td>
-                        <td className="whitespace-nowrap text-center px-4 py-2">
+                    
+                        <td className="whitespace-nowrap text-center px-4 py-2 relative">
+                          {/* Claim Button */}
                           <button
-                            className={`bg-yellow-500 hover:bg-yellow-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline transition-colors duration-300 ${
+                            className={`bg-yellow-500 hover:bg-yellow-600 mr-8 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline transition-colors duration-300 ${
                               driver.unclaimed_points === 0
                                 ? "opacity-50 cursor-not-allowed"
                                 : ""
@@ -623,23 +791,56 @@ const Home = ({ user }) => {
                             onClick={() => handleClaim(driver.driver_id)}
                             disabled={driver.unclaimed_points === 0}
                           >
-                            <FaClipboardCheck className="mr-2" />
+                            <FaClipboardCheck className="mr-2 inline" />
                             Claim
                           </button>
+
+                          {/* Dropdown Button */}
                           <button
-                            className="bg-red-500 hover:bg-red-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline transition-colors duration-300 ml-2"
-                            onClick={() => handleDeleteConfirm(driver.driver_id)}
+                            onClick={() => toggleDropdown(driver.driver_id)}
+                            className="absolute top-2  right-2 mt-1 text-gray-600 hover:text-gray-800 focus:outline-none bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-2 rounded focus:outline-none focus:shadow-outline transition-colors duration-300 flex items-center"
                           >
-                            <FaTrashAlt className="mr-2" />
-                            Delete
+                            <FaEllipsisV />
                           </button>
-                          <button
-                            className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline transition-colors duration-300 ml-2"
-                            onClick={() => fetchDriverDetails(driver.driver_id)}
-                          >
-                            <FaEye className="mr-2" />
-                            View
-                          </button>
+
+                          {/* Dropdown Menu */}
+                          {openDropdownId === driver.driver_id && (
+                            <div
+                              ref={dropdownRef}
+                              className="absolute flex flex-col right-10 -top-10 w-40 bg-white border rounded-md shadow-lg z-20"
+                            >
+                              <button
+                                onClick={() => {
+                                  fetchDriverDetails(driver.driver_id);
+                                  setOpenDropdownId(null);
+                                }}
+                                className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                              >
+                                <FaEye className="inline mr-2" />
+                                View
+                              </button>
+                              <button
+                                onClick={() => {
+                                  handleEdit(driver.driver_id);
+                                  setOpenDropdownId(null);
+                                }}
+                                className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                              >
+                                <FaEdit className="inline mr-2" />
+                                Edit
+                              </button>
+                              <button
+                                onClick={() => {
+                                  handleDeleteConfirm(driver.driver_id);
+                                  setOpenDropdownId(null);
+                                }}
+                                className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                              >
+                                <FaTrashAlt className="inline mr-2" />
+                                Delete
+                              </button>
+                            </div>
+                          )}
                         </td>
                       </tr>
                     ))}
@@ -651,8 +852,9 @@ const Home = ({ user }) => {
         </div>
       </div>
 
+      {/* Confirm Claim Modal */}
       {showConfirmClaimModal && (
-        <div className="fixed inset-0 flex items-center justify-center bg-gray-600 bg-opacity-50">
+        <div className="fixed inset-0 flex items-center justify-center bg-gray-600 bg-opacity-50 z-30">
           <div className="bg-white p-6 rounded shadow-md">
             <h2 className="text-2xl font-bold mb-4 text-gray-800">
               Confirm Claim
@@ -678,8 +880,9 @@ const Home = ({ user }) => {
         </div>
       )}
 
+      {/* Confirm Delete Modal */}
       {showConfirmDeleteModal && (
-        <div className="fixed inset-0 flex items-center justify-center bg-gray-600 bg-opacity-50">
+        <div className="fixed inset-0 flex items-center justify-center bg-gray-600 bg-opacity-50 z-30">
           <div className="bg-white p-6 rounded shadow-md">
             <h2 className="text-2xl font-bold mb-4 text-gray-800">
               Confirm Delete
@@ -705,28 +908,57 @@ const Home = ({ user }) => {
         </div>
       )}
 
+      {/* Add Driver Modal */}
       {showAddDriverModal && (
-        <div className="fixed  inset-0 flex items-center justify-center bg-gray-600 bg-opacity-50">
-          <div className="bg-white p-6 rounded shadow-md  w-full max-w-lg">
-            <h2 className="text-2xl font-bold mb-4 text-gray-800">Add </h2>
+        <div className="fixed inset-0 flex items-center justify-center bg-gray-600 bg-opacity-50 z-30">
+          <div className="bg-white p-6 rounded shadow-md w-full max-w-lg">
+            <h2 className="text-2xl font-bold mb-4 text-gray-800">Add Driver</h2>
             <input
               type="text"
               placeholder="Name"
               value={newDriver.name}
-              onChange={(e) => setNewDriver((prev) => ({ ...prev, name: e.target.value }))}
+              onChange={(e) =>
+                setNewDriver((prev) => ({ ...prev, name: e.target.value }))
+              }
               className="appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline mb-4"
             />
             <div className="mb-4">
               <label className="block text-gray-700 font-bold mb-2">Role</label>
               <select
                 value={newDriver.role}
-                onChange={(e) => setNewDriver((prev) => ({ ...prev, role: e.target.value }))}
+                onChange={(e) =>
+                  setNewDriver((prev) => ({ ...prev, role: e.target.value }))
+                }
                 className="appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
               >
                 <option value="Driver">Driver</option>
                 <option value="Fabricator">Fabricator</option>
                 <option value="Contractor">Contractor</option>
               </select>
+            </div>
+            <div className="mb-4">
+              <label className="block text-gray-700 font-bold mb-2">Place</label>
+              <input
+                type="text"
+                placeholder="Place"
+                value={newDriver.place}
+                onChange={(e) =>
+                  setNewDriver((prev) => ({ ...prev, place: e.target.value }))
+                }
+                className="appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
+              />
+            </div>
+            <div className="mb-4">
+              <label className="block text-gray-700 font-bold mb-2">Phone No</label>
+              <input
+                type="text"
+                placeholder="Phone Number"
+                value={newDriver.phone_no}
+                onChange={(e) =>
+                  setNewDriver((prev) => ({ ...prev, phone_no: e.target.value }))
+                }
+                className="appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
+              />
             </div>
             <div className="flex justify-end">
               <button
@@ -746,8 +978,59 @@ const Home = ({ user }) => {
         </div>
       )}
 
+      {/* Edit Driver Modal */}
+      {showEditDriverModal && (
+        <div className="fixed inset-0 flex items-center justify-center bg-gray-600 bg-opacity-50 z-30">
+          <div className="bg-white p-6 rounded shadow-md w-full max-w-lg">
+            <h2 className="text-2xl font-bold mb-4 text-gray-800">Edit Driver</h2>
+            <input
+              type="text"
+              placeholder="Name"
+              value={editDriver.name}
+              onChange={(e) =>
+                setEditDriver((prev) => ({ ...prev, name: e.target.value }))
+              }
+              className="appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline mb-4"
+            />
+            <input
+              type="text"
+              placeholder="Place"
+              value={editDriver.place}
+              onChange={(e) =>
+                setEditDriver((prev) => ({ ...prev, place: e.target.value }))
+              }
+              className="appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline mb-4"
+            />
+            <input
+              type="text"
+              placeholder="Phone Number"
+              value={editDriver.phone_no}
+              onChange={(e) =>
+                setEditDriver((prev) => ({ ...prev, phone_no: e.target.value }))
+              }
+              className="appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline mb-4"
+            />
+            <div className="flex justify-end">
+              <button
+                onClick={() => setShowEditDriverModal(false)}
+                className="bg-gray-500 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline transition-colors duration-300 mr-2"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={updateDriver}
+                className="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline transition-colors duration-300"
+              >
+                Save
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Driver Details Modal */}
       {showDriverDetailsModal && (
-        <div className="fixed inset-0 flex items-center justify-center bg-gray-600 bg-opacity-50">
+        <div className="fixed inset-0 flex items-center justify-center bg-gray-600 bg-opacity-50 z-30">
           <div className="bg-white p-6 rounded shadow-md w-full max-w-lg">
             <h2 className="text-2xl font-bold mb-4 text-gray-800">
               Driver Details
@@ -757,7 +1040,7 @@ const Home = ({ user }) => {
               onChange={(date) => setFilterMonth(date)}
               dateFormat="MM/yyyy"
               showMonthYearPicker
-              className="mb-4 border rounded px-3 py-2 text-gray-700"
+              className="mb-4 border rounded px-3 py-2 text-gray-700 w-full"
             />
             <div className="overflow-y-auto h-[400px] 2xl:h-[700px]">
               <table className="min-w-full divide-y-2 divide-gray-200 bg-white text-sm mb-4">
@@ -776,9 +1059,12 @@ const Home = ({ user }) => {
                 </thead>
                 <tbody className="divide-y divide-gray-200">
                   {filteredDriverDetails.map((detail, index) => {
-                    const isClaimed = driverDetails
+                    const cumulativeAmount = driverDetails
                       .slice(0, index + 1)
-                      .reduce((acc, cur) => acc + cur.amount, 0) >= 100000 && !driverDetails.slice(0, index).some(d => d.claimed);
+                      .reduce((acc, cur) => acc + cur.amount, 0);
+                    const isClaimed =
+                      cumulativeAmount >= 100000 &&
+                      !driverDetails.slice(0, index).some((d) => d.claimed);
                     return (
                       <tr key={detail.id}>
                         <td className="whitespace-nowrap px-4 py-2 text-gray-700 flex items-center">
